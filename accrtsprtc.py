@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import curdir, sep
 from collections import namedtuple
 
+import os
 import cgi
 import json
 import argparse
@@ -76,8 +77,6 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path, _,_ = self.path.partition('?')
 
-        response = None
-
         print(u"[START]: Received POST for %s" % path)
 
         try: 
@@ -99,9 +98,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json_response(r)
 
             elif path == ROUTE_STOP:
-                self.send_response(200)
-                self.send_header('Content-type','application/json')
-                self.end_headers()
+                r = self.check_stop(form)
+                self.send_json_response(r)
 
         except HTTPStatusError as err:
             self.send_error(err.code, err.message)
@@ -139,14 +137,36 @@ class RequestHandler(BaseHTTPRequestHandler):
         if rtsp != RTSP_:
             RTSP_ = rtsp
             self.launch_janus(rtsp, room, display)
+            msg = rtsp + " has been published to VideoRoom " + room
+            return self.comm_response(True, 1, msg)
 
-        return self.comm_response(True, 1, "Processing...Please wait.")
+        return self.comm_response(False, -3, "You've published the stream!")
 
     # Launch Janus from janus.py 
     def launch_janus(self, rtsp, room, display):
-        JANUS_PROCESS = subprocess.Popen(['python3', 'janus.py', 'http://127.0.0.1:8088/janus', '--play-from',
-        rtsp, '--name', display, '--room', room, '--verbose'], shell=True)
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        janus_path = dir_path + "/janus.py"
+        global JANUS_PROCESS
+        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, 'http://127.0.0.1:8088/janus', '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
 
+    # Check stop command
+    def check_stop(self, form):
+        global RTSP_
+        global JANUS_PROCESS
+        rtsp = form["rtsp"]
+        if len(rtsp) == 0:
+            return self.comm_response(False, -2, "Please input correct RTSP address!")
+        if rtsp != RTSP_:
+            return self.comm_response(False, -4, "No RTSP stream published!")
+        if JANUS_PROCESS != None:
+            print("Stopping SubProcess.")
+            RTSP_ = ""
+            JANUS_PROCESS.terminate()
+            JANUS_PROCESS = None
+            msg = rtsp + " Stopped!"
+            return self.comm_response(True, 1, msg)
+        return self.comm_response(False, -5, "No subproc Found!")
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="accrtsprtc")
@@ -162,7 +182,7 @@ if __name__ == "__main__":
         #Create a web server and define the handler to manage the
         #incoming request
         server = HTTPServer(('', args.p), RequestHandler)
-        print('Started httpserver on port %d ' , args.p)
+        print('Started httpserver on port', args.p)
 
         #Wait forever for incoming htto requests
         server.serve_forever()
@@ -170,6 +190,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print('^C received, shutting down the web server')
         if JANUS_PROCESS != None:
-            JANUS_PROCESS.kill()
+            JANUS_PROCESS.terminate()
+            JANUS_PROCESS = None
         
         server.socket.close()
