@@ -8,6 +8,7 @@ import cgi
 import json
 import argparse
 import subprocess
+import signal
 
 ResponseStatus = namedtuple("HTTPStatus",
                             ["code", "message"])
@@ -161,7 +162,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if JANUS_PROCESS != None:
             print("Stopping SubProcess.")
             RTSP_ = ""
-            JANUS_PROCESS.terminate()
+            # JANUS_PROCESS.terminate()
+            os.kill(JANUS_PROCESS.pid, signal.SIGINT)
+
             JANUS_PROCESS = None
             msg = rtsp + " Stopped!"
             return self.comm_response(True, 1, msg)
@@ -190,7 +193,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print('^C received, shutting down the web server')
         if JANUS_PROCESS != None:
-            JANUS_PROCESS.terminate()
+            os.kill(JANUS_PROCESS.pid, signal.SIGINT)
             JANUS_PROCESS = None
         
         server.socket.close()

@@ -30,7 +30,7 @@ h264_capability = RTCRtpCodecCapability(
     mimeType="video/H264", clockRate=90000, channels=None, parameters=codec_parameters
 )
 preferences = [h264_capability]
-RATE = 15
+RATE = 30
 camera = None
 
 pcs = set()
