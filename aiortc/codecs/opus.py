@@ -6,7 +6,7 @@ from av import AudioFrame
 from av.frame import Frame
 
 from ..jitterbuffer import JitterFrame
-# from ._opus import ffi, lib
+from ._opus import ffi, lib
 from .base import Decoder, Encoder
 
 CHANNELS = 2
