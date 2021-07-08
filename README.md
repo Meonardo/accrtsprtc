@@ -4,14 +4,16 @@ A simple HTTP server for starting & stopping publishing RTSP stream to JanusVide
 
 ## Notice
 
-janus.py is a copy from aiortc [example](https://github.com/aiortc/aiortc/tree/main/examples/janus) with some modifications like added `display` parameter.
+* aiortc is a copy from [jpiat](https://github.com/jpiat/aiortc) (brilliant work of avoiding unnecessary transcoding);
+* currently audio is disabled.
 
 ## Usage
 
 For Server side:
 
 * Run `python3 accrtsprtc.py --p {your port}`;
-* Install some dependencies if any error pop out.
+* Install some dependencies if any error pop out;
+* Need Gstreamer framework(python binding).
 
 For client side:
 
@@ -48,11 +50,12 @@ For client side:
   |      |  Type  |              Example               | Notice |
   | :--: | :----: | :--------------------------------: | :----: |
   | rtsp | String | rtsp://192.168.5.158:554/main.h264 |  必传  |
+  |  room   |  Int   |                1234               |           必传            |
 
   Response:
 
   `{
-    "success": true,
+  "success": true,
     "code": 1,
     "data": "rtsp://192.168.5.201:554/main.h264 Stopped!"
   }`
