@@ -4,17 +4,67 @@ import logging
 import random
 import string
 import time
-
 import aiohttp
 
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
+
+from collections import OrderedDict
+from h264track import H264EncodedStreamTrack
+from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
+from aiortc.rtcrtpparameters import RTCRtpCodecCapability
+
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+
+capabilities = RTCRtpSender.getCapabilities("video")
+codec_parameters = OrderedDict(
+    [
+        ("packetization-mode", "1"),
+        ("level-asymmetry-allowed", "1"),
+        ("profile-level-id", "42001f"),
+    ]
+)
+h264_capability = RTCRtpCodecCapability(
+    mimeType="video/H264", clockRate=90000, channels=None, parameters=codec_parameters
+)
+preferences = [h264_capability]
+RATE = 15
+camera = None
 
 pcs = set()
 
 
 def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
+
+
+class GstH264Camera:
+    RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal,stream-format=byte-stream ! appsink emit-signals=True name=h264_sink"
+    #RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! video/x-h264,alignment=nal,stream-format=byte-stream ! appsink emit-signals=True name=h264_sink"
+
+    def __init__(self, output, rtsp):
+        if rtsp is not None:
+            self.pipeline = Gst.parse_launch(GstH264Camera.RTSP_PIPELINE.format(rtsp))
+        else:
+            raise Exception("Please input RTSP stream address.")
+        self.output = output
+        self.appsink = self.pipeline.get_by_name('h264_sink')
+        self.appsink.connect("new-sample", self.on_buffer, None)
+        self.pipeline.set_state(Gst.State.PLAYING)
+
+    def on_buffer(self, sink, data) -> Gst.FlowReturn:
+        sample = sink.emit("pull-sample")
+        if isinstance(sample, Gst.Sample):
+            buffer = sample.get_buffer()
+            byte_buffer = buffer.extract_dup(0, buffer.get_size())
+            self.output.write(byte_buffer)
+        return Gst.FlowReturn.OK
+
+    def stop(self):
+        self.pipeline.set_state(Gst.State.NULL)
 
 
 class JanusPlugin:
@@ -97,23 +147,31 @@ class JanusSession:
                         print(data)
 
 
-async def publish(plugin, player):
+async def publish(plugin, player, rtsp):
     """
     Send video to the room.
     """
+
     pc = RTCPeerConnection()
     pcs.add(pc)
 
     # configure media
-    media = {"audio": False, "video": True}
-    if player and player.audio:
-        pc.addTrack(player.audio)
-        media["audio"] = True
+    if player is not None:
+        media = {"audio": False, "video": True}
+        if player and player.audio:
+            pc.addTrack(player.audio)
+            media["audio"] = True
 
-    if player and player.video:
-        pc.addTrack(player.video)
+        if player and player.video:
+            pc.addTrack(player.video)
+        else:
+            pc.addTrack(VideoStreamTrack())
+    elif rtsp is not None:
+        global camera
+        video_track = H264EncodedStreamTrack(RATE)
+        camera = GstH264Camera(RATE, video_track, rtsp)
     else:
-        pc.addTrack(VideoStreamTrack())
+        raise Exception("No Media Input! Stop Now.")
 
     # send offer
     await pc.setLocalDescription(await pc.createOffer())
@@ -136,6 +194,10 @@ async def publish(plugin, player):
             sdp=response["jsep"]["sdp"], type=response["jsep"]["type"]
         )
     )
+    for t in pc.getTransceivers():
+        if t.kind == "video":
+            t.setCodecPreferences(preferences)
+            pc.addTrack(video_track)
 
 
 async def subscribe(session, room, feed, recorder):
@@ -178,7 +240,7 @@ async def subscribe(session, room, feed, recorder):
     await recorder.start()
 
 
-async def run(player, recorder, room, session, display):
+async def run(player, rtsp, recorder, room, session, display):
     await session.create()
 
     # join video room
@@ -200,7 +262,7 @@ async def run(player, recorder, room, session, display):
         print("id: %(id)s, display: %(display)s" % publisher)
 
     # send video
-    await publish(plugin=plugin, player=player)
+    await publish(plugin=plugin, player=player, rtsp=rtsp)
 
     # receive video
     if recorder is not None and publishers:
@@ -211,7 +273,6 @@ async def run(player, recorder, room, session, display):
     # exchange media for 10 minutes
     print("Exchanging media")
     await asyncio.sleep(600)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Janus")
@@ -232,8 +293,7 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
 
-    print("Received Params:")
-    print(args)
+    print("Received Params:", args)
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
@@ -242,8 +302,10 @@ if __name__ == "__main__":
     session = JanusSession(args.url)
 
     # create media source
-    if args.play_from:
-        player = MediaPlayer(args.play_from)
+    play_from = args.play_from
+    if play_from:
+        if play_from.startswith("rtsp") == False:
+            player = MediaPlayer(args.play_from)
     else:
         player = None
 
@@ -256,11 +318,12 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(
-            run(player=player, recorder=recorder, room=args.room, session=session, display=args.name)
+            run(player=player, rtsp=play_from, recorder=recorder, room=args.room, session=session, display=args.name)
         )
     except KeyboardInterrupt:
         pass
     finally:
+        print("Stopping now!")
         if recorder is not None:
             loop.run_until_complete(recorder.stop())
         loop.run_until_complete(session.destroy())
@@ -268,3 +331,7 @@ if __name__ == "__main__":
         # close peer connections
         coros = [pc.close() for pc in pcs]
         loop.run_until_complete(asyncio.gather(*coros))
+
+        if camera is not None:
+            camera.stop()
+            del camera

@@ -173,8 +173,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--p",
         type=int,
-        default=9991,
-        help="HTTP port number, default is 9991",
+        default=9001,
+        help="HTTP port number, default is 9001",
     )
     args = parser.parse_args()
 
