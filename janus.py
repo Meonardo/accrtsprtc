@@ -6,6 +6,10 @@ import string
 import time
 import aiohttp
 
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
 
@@ -13,11 +17,6 @@ from collections import OrderedDict
 from h264track import H264EncodedStreamTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
-
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
-
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -36,20 +35,16 @@ camera = None
 
 pcs = set()
 
-
 def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
-
 
 class GstH264Camera:
     RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal,stream-format=byte-stream ! appsink emit-signals=True name=h264_sink"
     #RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! video/x-h264,alignment=nal,stream-format=byte-stream ! appsink emit-signals=True name=h264_sink"
 
     def __init__(self, output, rtsp):
-        if rtsp is not None:
-            self.pipeline = Gst.parse_launch(GstH264Camera.RTSP_PIPELINE.format(rtsp))
-        else:
-            raise Exception("Please input RTSP stream address.")
+        source = GstH264Camera.RTSP_PIPELINE.format(rtsp)
+        self.pipeline = Gst.parse_launch(source)
         self.output = output
         self.appsink = self.pipeline.get_by_name('h264_sink')
         self.appsink.connect("new-sample", self.on_buffer, None)
@@ -156,8 +151,8 @@ async def publish(plugin, player, rtsp):
     pcs.add(pc)
 
     # configure media
+    media = {"audio": False, "video": True}
     if player is not None:
-        media = {"audio": False, "video": True}
         if player and player.audio:
             pc.addTrack(player.audio)
             media["audio"] = True
@@ -169,7 +164,8 @@ async def publish(plugin, player, rtsp):
     elif rtsp is not None:
         global camera
         video_track = H264EncodedStreamTrack(RATE)
-        camera = GstH264Camera(RATE, video_track, rtsp)
+        camera = GstH264Camera(video_track, rtsp)
+        pc.addTrack(video_track)
     else:
         raise Exception("No Media Input! Stop Now.")
 
@@ -195,9 +191,9 @@ async def publish(plugin, player, rtsp):
         )
     )
     for t in pc.getTransceivers():
+        print(t)
         if t.kind == "video":
             t.setCodecPreferences(preferences)
-            pc.addTrack(video_track)
 
 
 async def subscribe(session, room, feed, recorder):
@@ -275,6 +271,8 @@ async def run(player, rtsp, recorder, room, session, display):
     await asyncio.sleep(600)
 
 if __name__ == "__main__":
+    Gst.init(None)
+
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. http://localhost:8088/janus")
     parser.add_argument(
@@ -318,7 +316,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(
-            run(player=player, rtsp=play_from, recorder=recorder, room=args.room, session=session, display=args.name)
+            run(player=None, rtsp=play_from, recorder=recorder, room=args.room, session=session, display=args.name)
         )
     except KeyboardInterrupt:
         pass

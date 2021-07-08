@@ -31,6 +31,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
         self._frame_time = 1 / video_rate
         self._clock_rate = clock_rate
         self.nal_buffer = None
+        print("Init h264 codec successfully.")
 
     def write(self, buf: bytes):
         if self.nal_buffer is None:
