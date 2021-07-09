@@ -148,7 +148,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         global JANUS_PROCESS
-        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, 'http://127.0.0.1:8088/janus', '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
+        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, 'ws://127.0.0.1:8188', '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
 
     # Check stop command
     def check_stop(self, form):

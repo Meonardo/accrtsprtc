@@ -235,18 +235,24 @@ class WebRTCClient:
         self.camera = None
 
     async def destroy(self):
-        self.camera.stop()
+        if self.camera is not None:
+            self.camera.stop()
         await self.signaling.leave()
         self.pc.close()
 
     async def handle_plugin_data(self, data):
+        print("handle plugin data: \n", data)
+
         if data.jsep is not None:
             await self.handle_sdp(data.jsep)
-        if data.data["publishers"] is not None:
-            publishers = data.data["publishers"]
-            for publisher in publishers:
-                print("id: %(id)s, display: %(display)s" % publisher)
-            await self.publish()
+        if data.data is not None:
+            events_type = data.data["videoroom"]
+            if events_type == "joined":
+                await self.publish()
+                publishers = data.data["publishers"]
+                print("Publishes in the room: \n")
+                for publisher in publishers:
+                    print("id: %(id)s, display: %(display)s" % publisher)
 
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
@@ -269,10 +275,6 @@ class WebRTCClient:
             self.webrtc.emit('add-ice-candidate', sdpmlineindex, candidate)
 
     async def publish(self):
-        """
-        Send video to the room.
-        """
-
         pc = RTCPeerConnection()
         self.pc = pc
 
@@ -291,13 +293,11 @@ class WebRTCClient:
         request.update(media)
 
         sdp = {
-            "jsep": {
-                "sdp": pc.localDescription.sdp,
-                "trickle": False,
-                "type": pc.localDescription.type,
-            }
+            "sdp": pc.localDescription.sdp,
+            "trickle": False,
+            "type": pc.localDescription.type,
         }
-        self.signaling.sendmessage(request, sdp)
+        await self.signaling.sendmessage(request, sdp)
 
     async def loop(self, signaling, room, display):
         await signaling.connect()
@@ -315,7 +315,7 @@ class WebRTCClient:
             try:
                 msg = await signaling.recv()
                 if isinstance(msg, PluginData):
-                    self.handle_plugin_data(msg)
+                    await self.handle_plugin_data(msg)
                 elif isinstance(msg, Media):
                     print (msg)
                 elif isinstance(msg, WebrtcUp):
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     print("Received Params:", args)
 
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
 
     play_from = args.play_from
 
@@ -432,7 +432,7 @@ if __name__ == "__main__":
         recorder = None
 
     # create signaling client
-    signaling = JanusGateway("ws://192.168.5.12:8188")
+    signaling = JanusGateway(args.url)
 
     # create webrtc client
     our_id = random.randrange(10, 10000)
