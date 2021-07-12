@@ -106,8 +106,8 @@ class JanusGateway:
             "session_id": self.session,
             "transaction": transaction
             }))
-        resp = await self.conn.recv()
-        print ("left room: ", resp)
+        # resp = await self.conn.recv()
+        # print ("left room: ", resp)
 
     async def attach(self, plugin):
         assert hasattr(self, "session"), "Must connect before attaching to plugin"
@@ -228,7 +228,7 @@ class WebRTCClient:
         if self.camera is not None:
             self.camera.stop()
         await self.signaling.leave()
-        self.pc.close()
+        await self.pc.close()
 
     async def handle_plugin_data(self, data):
         print("handle plugin data: \n", data)
