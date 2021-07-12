@@ -3,14 +3,15 @@ import asyncio
 import logging
 import random
 import string
-
 import websockets
 import json
-from websockets.exceptions import ConnectionClosed
+import attr
 
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
+
+from websockets.exceptions import ConnectionClosed
 
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
@@ -33,12 +34,6 @@ h264_capability = RTCRtpCodecCapability(
 )
 preferences = [h264_capability]
 RATE = 30
-camera = None
-
-pcs = set()
-
-
-import attr
 
 @attr.s
 class JanusEvent:
@@ -81,7 +76,6 @@ class Ack:
 class Jsep:
     sdp = attr.ib()
     type = attr.ib(validator=attr.validators.in_(["offer", "pranswer", "answer", "rollback"]))
-
 
 @attr.s
 class JanusGateway:
@@ -133,7 +127,6 @@ class JanusGateway:
     async def sendtrickle(self, candidate):
         assert hasattr(self, "session"), "Must connect before sending messages"
         assert hasattr(self, "handle"), "Must attach before sending messages"
-
         transaction = transaction_id()
         janus_message = {
             "janus": "trickle",
@@ -142,13 +135,11 @@ class JanusGateway:
             "transaction": transaction,
             "candidate": candidate
         }
-
         await self.conn.send(json.dumps(janus_message))
 
     async def sendmessage(self, body, jsep=None):
         assert hasattr(self, "session"), "Must connect before sending messages"
         assert hasattr(self, "handle"), "Must attach before sending messages"
-
         transaction = transaction_id()
         janus_message = {
             "janus": "message",
@@ -159,7 +150,6 @@ class JanusGateway:
         }
         if jsep is not None:
             janus_message["jsep"] = jsep
-
         await self.conn.send(json.dumps(janus_message))
 
     async def keepalive(self):
@@ -279,7 +269,6 @@ class WebRTCClient:
         self.pc = pc
 
         # configure media
-        media = {"audio": False, "video": True}
         if self.rtsp is not None:
             video_track = H264EncodedStreamTrack(RATE)
             self.camera = GstH264Camera(video_track, self.rtsp)
@@ -289,14 +278,9 @@ class WebRTCClient:
 
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
-        request = {"request": "configure"}
-        request.update(media)
 
-        sdp = {
-            "sdp": pc.localDescription.sdp,
-            "trickle": False,
-            "type": pc.localDescription.type,
-        }
+        request = { "request": "configure", "audio": False, "video": True }
+        sdp = { "sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type }
         await self.signaling.sendmessage(request, sdp)
 
     async def loop(self, signaling, room, display):
