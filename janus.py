@@ -273,6 +273,10 @@ class WebRTCClient:
             video_track = H264EncodedStreamTrack(RATE)
             self.camera = GstH264Camera(video_track, self.rtsp)
             pc.addTrack(video_track)
+
+            audio_track = MediaPlayer(':0', format='avfoundation').audio
+            if audio_track is not None:
+                pc.addTrack(audio_track)
         else:
             raise Exception("No Media Input! Stop Now.")
 
