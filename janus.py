@@ -270,15 +270,18 @@ class WebRTCClient:
 
         # configure media
         if self.rtsp is not None:
-            player = MediaPlayer('0:0', format='avfoundation')
+            player = MediaPlayer(':0', format='avfoundation')
             if player.audio is not None:
                 pc.addTrack(player.audio)
-            if player.video is not None:
-                pc.addTrack(player.video)
-            else:
-                video_track = H264EncodedStreamTrack(RATE)
-                self.camera = GstH264Camera(video_track, self.rtsp)
-                pc.addTrack(video_track)
+            # if player.video is not None:
+            #     pc.addTrack(player.video)
+            # else:
+            #     video_track = H264EncodedStreamTrack(RATE)
+            #     self.camera = GstH264Camera(video_track, self.rtsp)
+            #     pc.addTrack(video_track)
+            video_track = H264EncodedStreamTrack(RATE)
+            self.camera = GstH264Camera(video_track, self.rtsp)
+            pc.addTrack(video_track)
         else:
             raise Exception("No Media Input! Stop Now.")
 
