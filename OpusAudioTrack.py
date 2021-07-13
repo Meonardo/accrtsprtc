@@ -2,7 +2,6 @@ from av import AudioFrame
 from pydub import AudioSegment
 import pyaudio
 import av
-import fractions
 
 from aiortc.mediastreams import MediaStreamTrack
 
