@@ -158,7 +158,7 @@ class JanusGateway:
 
         while True:
             try:
-                await asyncio.sleep(10)
+                await asyncio.sleep(30)
                 transaction = transaction_id()
                 await self.conn.send(json.dumps({
                     "janus": "keepalive",
@@ -343,7 +343,6 @@ class GstH264Camera:
 # 暂时保留, 如有录制需求在调用
 async def subscribe(session, room, feed, recorder):
     pc = RTCPeerConnection()
-    pcs.add(pc)
 
     @pc.on("track")
     async def on_track(track):

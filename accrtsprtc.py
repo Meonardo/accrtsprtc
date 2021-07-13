@@ -134,21 +134,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         if len(rtsp) == 0:
             return self.comm_response(False, -2, "Please input correct RTSP address!")
 
+        janus_signaling = form["janus"]
+
         global RTSP_
         if rtsp != RTSP_:
             RTSP_ = rtsp
-            self.launch_janus(rtsp, room, display)
+            self.launch_janus(rtsp, room, display, janus_signaling)
             msg = rtsp + " has been published to VideoRoom " + room
             return self.comm_response(True, 1, msg)
 
         return self.comm_response(False, -3, "You've published the stream!")
 
     # Launch Janus from janus.py 
-    def launch_janus(self, rtsp, room, display):
+    def launch_janus(self, rtsp, room, display, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         global JANUS_PROCESS
-        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, 'ws://127.0.0.1:8188', '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
+        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
 
     # Check stop command
     def check_stop(self, form):
