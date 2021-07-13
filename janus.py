@@ -285,7 +285,7 @@ class WebRTCClient:
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
 
-        request = { "request": "configure", "audio": False, "video": True }
+        request = { "request": "configure", "audio": True, "video": True }
         sdp = { "sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type }
         await self.signaling.sendmessage(request, sdp)
 
