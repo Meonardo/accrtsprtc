@@ -54,8 +54,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         path, _, query_string = self.path.partition('?')
         query_components = dict(qc.split("=") for qc in query_string.split("&"))
 
-        response = None
-
         print(u"[START]: Received GET for %s with query: %s" % (path, query_components))
 
         try:

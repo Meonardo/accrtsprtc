@@ -6,6 +6,7 @@ import string
 import websockets
 import json
 import attr
+import cv2
 
 import gi
 gi.require_version('Gst', '1.0')
@@ -13,13 +14,15 @@ from gi.repository import Gst
 
 from websockets.exceptions import ConnectionClosed
 
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
-from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaPlayer, MediaRecorder, MediaRelay
+from aiortc.mediastreams import MediaStreamTrack
 
 from collections import OrderedDict
 from h264track import H264EncodedStreamTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
+from av import VideoFrame
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -223,6 +226,7 @@ class WebRTCClient:
         self.rtsp = rtsp
         self.pc = None
         self.camera = None
+        self.relay = MediaRelay()
 
     async def destroy(self):
         if self.camera is not None:
@@ -270,17 +274,19 @@ class WebRTCClient:
 
         # configure media
         if self.rtsp is not None:
-            player = MediaPlayer(':0', format='avfoundation')
-            if player.audio is not None:
-                pc.addTrack(player.audio)
-            # if player.video is not None:
-            #     pc.addTrack(player.video)
+            player = MediaPlayer('default:none', format='avfoundation', options={
+                'video_size': '1920x1080'
+            })
+            # if player.audio is not None:
+            #     pc.addTrack(player.audio)
+            if player.video is not None:
+                pc.addTrack(player.video)
             # else:
             #     video_track = H264EncodedStreamTrack(RATE)
             #     self.camera = GstH264Camera(video_track, self.rtsp)
             #     pc.addTrack(video_track)
-            video_track = H264EncodedStreamTrack(RATE)
-            self.camera = GstH264Camera(video_track, self.rtsp)
+            v = player.video
+            video_track = VideoTransformTrack(self.relay.subscribe(v), transform="rotate")
             pc.addTrack(video_track)
         else:
             raise Exception("No Media Input! Stop Now.")
@@ -349,44 +355,76 @@ class GstH264Camera:
     def stop(self):
         self.pipeline.set_state(Gst.State.NULL)
 
-# 暂时保留, 如有录制需求在调用
-async def subscribe(session, room, feed, recorder):
-    pc = RTCPeerConnection()
+class VideoTransformTrack(MediaStreamTrack):
+    """
+    A video stream track that transforms frames from an another track.
+    """
 
-    @pc.on("track")
-    async def on_track(track):
-        print("Track %s received" % track.kind)
-        if track.kind == "video":
-            recorder.addTrack(track)
-        if track.kind == "audio":
-            recorder.addTrack(track)
+    kind = "video"
 
-    # subscribe
-    plugin = await session.attach("janus.plugin.videoroom")
-    response = await plugin.send(
-        {"body": {"request": "join", "ptype": "subscriber", "room": room, "pin": str(room), "feed": feed}}
-    )
+    def __init__(self, track, transform):
+        super().__init__()  # don't forget this!
+        self.track = track
+        self.transform = transform
+        print("Video Transform Begins!")
 
-    # apply offer
-    await pc.setRemoteDescription(
-        RTCSessionDescription(
-            sdp=response["jsep"]["sdp"], type=response["jsep"]["type"]
-        )
-    )
+    async def recv(self):
+        frame = await self.track.recv()
+        print("Transforming...")
 
-    # send answer
-    await pc.setLocalDescription(await pc.createAnswer())
-    response = await plugin.send(
-        {
-            "body": {"request": "start"},
-            "jsep": {
-                "sdp": pc.localDescription.sdp,
-                "trickle": False,
-                "type": pc.localDescription.type,
-            },
-        }
-    )
-    await recorder.start()
+        if self.transform == "cartoon":
+            img = frame.to_ndarray(format="bgr24")
+
+            # prepare color
+            img_color = cv2.pyrDown(cv2.pyrDown(img))
+            for _ in range(6):
+                img_color = cv2.bilateralFilter(img_color, 9, 9, 7)
+            img_color = cv2.pyrUp(cv2.pyrUp(img_color))
+
+            # prepare edges
+            img_edges = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            img_edges = cv2.adaptiveThreshold(
+                cv2.medianBlur(img_edges, 7),
+                255,
+                cv2.ADAPTIVE_THRESH_MEAN_C,
+                cv2.THRESH_BINARY,
+                9,
+                2,
+            )
+            img_edges = cv2.cvtColor(img_edges, cv2.COLOR_GRAY2RGB)
+
+            # combine color and edges
+            img = cv2.bitwise_and(img_color, img_edges)
+
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        elif self.transform == "edges":
+            # perform edge detection
+            img = frame.to_ndarray(format="bgr24")
+            img = cv2.cvtColor(cv2.Canny(img, 100, 200), cv2.COLOR_GRAY2BGR)
+
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        elif self.transform == "rotate":
+            # rotate image
+            img = frame.to_ndarray(format="bgr24")
+            rows, cols, _ = img.shape
+            M = cv2.getRotationMatrix2D((cols / 2, rows / 2), frame.time * 45, 1)
+            img = cv2.warpAffine(img, M, (cols, rows))
+
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        else:
+            return frame
 
 
 if __name__ == "__main__":
