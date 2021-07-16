@@ -5,7 +5,6 @@ A simple HTTP server for starting & stopping publishing RTSP stream to JanusVide
 ## Notice
 
 * aiortc is a copy from [jpiat](https://github.com/jpiat/aiortc) (brilliant work of avoiding unnecessary transcoding);
-* currently audio is disabled.
 
 ## Usage
 
@@ -27,9 +26,10 @@ For client side:
 
   |         |  Type  |              Example               |          Notice           |
   | :-----: | :----: | :--------------------------------: | :-----------------------: |
-  |  rtsp   | String | rtsp://192.168.5.158:554/main.h264 |           必传            |
-  | display | String |            IPCamera158             | 必传/限制数字和大小写字母 |
-  |  room   |  Int   |                1234                |           必传            |
+  |  rtsp   | String | rtsp://192.168.5.158:554/main.h264 |           Required            |
+  | display | String |            IPCamera158             | Required |
+  |  room   |  Int   |                1234                |           Required            |
+  |  janus  |  String|                ws://127.0.0.1:8188                |           Required            |
 
   Response:
 
@@ -49,8 +49,8 @@ For client side:
 
   |      |  Type  |              Example               | Notice |
   | :--: | :----: | :--------------------------------: | :----: |
-  | rtsp | String | rtsp://192.168.5.158:554/main.h264 |  必传  |
-  |  room   |  Int   |                1234               |           必传            |
+  | rtsp | String | rtsp://192.168.5.158:554/main.h264 |  Required  |
+  |  room   |  Int   |                1234               |           Required            |
 
   Response:
 
