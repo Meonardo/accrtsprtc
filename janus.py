@@ -220,13 +220,12 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, id_, signaling, rtsp):
+    def __init__(self, id_, signaling:JanusGateway, rtsp):
         self.id_ = id_
         self.signaling = signaling
         self.rtsp = rtsp
         self.pc = None
         self.camera = None
-        self.relay = MediaRelay()
 
     async def destroy(self):
         if self.camera is not None:
@@ -274,19 +273,12 @@ class WebRTCClient:
 
         # configure media
         if self.rtsp is not None:
-            player = MediaPlayer('default:none', format='avfoundation', options={
-                'video_size': '1920x1080'
-            })
-            # if player.audio is not None:
-            #     pc.addTrack(player.audio)
-            if player.video is not None:
-                pc.addTrack(player.video)
-            # else:
-            #     video_track = H264EncodedStreamTrack(RATE)
-            #     self.camera = GstH264Camera(video_track, self.rtsp)
-            #     pc.addTrack(video_track)
-            v = player.video
-            video_track = VideoTransformTrack(self.relay.subscribe(v), transform="rotate")
+            player = MediaPlayer(':0', format='avfoundation')
+            if player.audio is not None:
+                pc.addTrack(player.audio)
+                
+            video_track = H264EncodedStreamTrack(RATE)
+            self.camera = GstH264Camera(video_track, self.rtsp)
             pc.addTrack(video_track)
         else:
             raise Exception("No Media Input! Stop Now.")
