@@ -125,8 +125,12 @@ class RequestHandler(BaseHTTPRequestHandler):
     def check_start(self, form):
         display = form["display"] or "LocalCamera"
         room = form["room"]
+        id = form["id"]
         if room.isdigit() == False:
             return self.comm_response(False, -1, "Please input correct Room number!")
+        
+        if id.isdigit() == False:
+            return self.comm_response(False, -5, "Please input correct Publish ID!")
 
         rtsp = form["rtsp"]
         if len(rtsp) == 0:
@@ -135,20 +139,24 @@ class RequestHandler(BaseHTTPRequestHandler):
         janus_signaling = form["janus"]
 
         global RTSP_
+        if RTSP_ is not None:
+            print("Old RTSP stream is publishing, stop it first, then publish new RTSP stream ", rtsp)
+            self.check_stop({"room": room, "rtsp": rtsp})
+            
         if rtsp != RTSP_:
             RTSP_ = rtsp
-            self.launch_janus(rtsp, room, display, janus_signaling)
+            self.launch_janus(rtsp, room, display, id, janus_signaling)
             msg = rtsp + " has been published to VideoRoom " + room
             return self.comm_response(True, 1, msg)
 
         return self.comm_response(False, -3, "You've published the stream!")
 
     # Launch Janus from janus.py 
-    def launch_janus(self, rtsp, room, display, janus_signaling='ws://127.0.0.1:8188'):
+    def launch_janus(self, rtsp, room, display, id, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         global JANUS_PROCESS
-        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--verbose'])
+        JANUS_PROCESS = subprocess.Popen(['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--id', id, '--verbose'])
 
     # Check stop command
     def check_stop(self, form):

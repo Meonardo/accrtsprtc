@@ -289,14 +289,14 @@ class WebRTCClient:
         sdp = { "sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type }
         await self.signaling.sendmessage(request, sdp)
 
-    async def loop(self, signaling, room, display):
+    async def loop(self, signaling, room, display, id):
         await signaling.connect()
         await signaling.attach("janus.plugin.videoroom")
 
         loop = asyncio.get_event_loop()
         loop.create_task(signaling.keepalive())
 
-        joinmessage = { "request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display }
+        joinmessage = { "request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display, "id": int(id) }
         await signaling.sendmessage(joinmessage)
 
         assert signaling.conn
@@ -362,6 +362,10 @@ if __name__ == "__main__":
         default="LocalCamera",
         help="The name display in the room",
     ),
+    parser.add_argument(
+        "--id",
+        help="The ID of the camera in the videoroom(publishId)",
+    ),
     parser.add_argument("--play-from", help="Read the media from a file and sent it."),
     parser.add_argument("--record-to", help="Write received media to a file."),
     parser.add_argument("--verbose", "-v", action="count")
@@ -390,7 +394,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(
-             rtc_client.loop(signaling=signaling, room=args.room, display=args.name)
+             rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
         )
     except KeyboardInterrupt:
         pass
