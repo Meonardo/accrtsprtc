@@ -141,7 +141,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         global RTSP_
         if RTSP_ is not None:
             print("Old RTSP stream is publishing, stop it first, then publish new RTSP stream ", rtsp)
-            self.check_stop({"room": room, "rtsp": rtsp})
+            self.check_stop({"room": room, "rtsp": RTSP_})
             
         if rtsp != RTSP_:
             RTSP_ = rtsp
