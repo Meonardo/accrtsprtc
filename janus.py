@@ -277,13 +277,13 @@ class WebRTCClient:
             if platform.system() == "Darwin":
                 player = MediaPlayer(':0', format='avfoundation')
             elif platform.system() == "Linux":
-                player = MediaPlayer("default", format="pulse")
+                player = MediaPlayer("hw:2", format="alsa")
             else:
                 player = MediaPlayer("default", format="dshow")
 
             if player.audio is not None:
                 pc.addTrack(player.audio)
-                
+
             video_track = H264EncodedStreamTrack(RATE)
             self.camera = GstH264Camera(video_track, self.rtsp)
             pc.addTrack(video_track)
