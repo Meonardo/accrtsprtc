@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import curdir, sep
 from collections import namedtuple
@@ -195,7 +195,7 @@ if __name__ == "__main__":
         server = HTTPServer(('', args.p), RequestHandler)
         print('Started httpserver on port', args.p)
 
-        #Wait forever for incoming htto requests
+        #Wait forever for incoming http requests
         server.serve_forever()
 
     except KeyboardInterrupt:

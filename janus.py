@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import platform
 import random
 import string
 import websockets
@@ -273,18 +274,19 @@ class WebRTCClient:
         # configure media
         if self.rtsp is not None:
             # for testing switch camera
-            if "192.168.5.201" in self.rtsp:
-                player = MediaPlayer('0:0', format='avfoundation')
-                pc.addTrack(player.video)
-                pc.addTrack(player.audio)
-            else:
+            if platform.system() == "Darwin":
                 player = MediaPlayer(':0', format='avfoundation')
-                if player.audio is not None:
-                    pc.addTrack(player.audio)
-                    
-                video_track = H264EncodedStreamTrack(RATE)
-                self.camera = GstH264Camera(video_track, self.rtsp)
-                pc.addTrack(video_track)
+            elif platform.system() == "Linux":
+                player = MediaPlayer("default", format="pulse")
+            else:
+                player = MediaPlayer("default", format="dshow")
+
+            if player.audio is not None:
+                pc.addTrack(player.audio)
+                
+            video_track = H264EncodedStreamTrack(RATE)
+            self.camera = GstH264Camera(video_track, self.rtsp)
+            pc.addTrack(video_track)
         else:
             raise Exception("No Media Input! Stop Now.")
 
