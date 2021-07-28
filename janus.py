@@ -7,22 +7,15 @@ import string
 import websockets
 import json
 import attr
-
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
-
 from websockets.exceptions import ConnectionClosed
-
-from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
-from aiortc.mediastreams import MediaStreamTrack
-
 from collections import OrderedDict
 from h264track import H264EncodedStreamTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
-from av import VideoFrame
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -38,9 +31,11 @@ h264_capability = RTCRtpCodecCapability(
 preferences = [h264_capability]
 RATE = 30
 
+
 @attr.s
 class JanusEvent:
     sender = attr.ib(validator=attr.validators.instance_of(int))
+
 
 @attr.s
 class PluginData(JanusEvent):
@@ -48,9 +43,11 @@ class PluginData(JanusEvent):
     data = attr.ib()
     jsep = attr.ib()
 
+
 @attr.s
 class WebrtcUp(JanusEvent):
     pass
+
 
 @attr.s
 class Media(JanusEvent):
@@ -62,23 +59,28 @@ class Media(JanusEvent):
         if kind not in ["video", "audio"]:
             raise ValueError("kind must equal video or audio")
 
+
 @attr.s
 class SlowLink(JanusEvent):
     uplink = attr.ib(validator=attr.validators.instance_of(bool))
     lost = attr.ib(validator=attr.validators.instance_of(int))
 
+
 @attr.s
 class HangUp(JanusEvent):
     reason = attr.ib(validator=attr.validators.instance_of(str))
+
 
 @attr.s(cmp=False)
 class Ack:
     transaction = attr.ib(validator=attr.validators.instance_of(str))
 
+
 @attr.s
 class Jsep:
     sdp = attr.ib()
     type = attr.ib(validator=attr.validators.in_(["offer", "pranswer", "answer", "rollback"]))
+
 
 @attr.s
 class JanusGateway:
@@ -91,9 +93,9 @@ class JanusGateway:
         await self.conn.send(json.dumps({
             "janus": "create",
             "transaction": transaction
-            }))
+        }))
         resp = await self.conn.recv()
-        print (resp)
+        print(resp)
         parsed = json.loads(resp)
         assert parsed["janus"] == "success", "Failed creating session"
         assert parsed["transaction"] == transaction, "Incorrect transaction"
@@ -108,7 +110,7 @@ class JanusGateway:
             "janus": "destroy",
             "session_id": self.session,
             "transaction": transaction
-            }))
+        }))
         # resp = await self.conn.recv()
         # print ("left room: ", resp)
 
@@ -220,7 +222,7 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, id_, signaling:JanusGateway, rtsp):
+    def __init__(self, id_, signaling: JanusGateway, rtsp):
         self.id_ = id_
         self.signaling = signaling
         self.rtsp = rtsp
@@ -250,9 +252,9 @@ class WebRTCClient:
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
             sdp = msg['sdp']
-            assert(msg['type'] == 'answer')
-            print ('Received answer:\n%s' % sdp)
-            
+            assert (msg['type'] == 'answer')
+            print('Received answer:\n%s' % sdp)
+
             # apply answer
             await self.pc.setRemoteDescription(
                 RTCSessionDescription(sdp=sdp, type=msg['type'])
@@ -260,12 +262,6 @@ class WebRTCClient:
             for t in self.pc.getTransceivers():
                 if t.kind == "video":
                     t.setCodecPreferences(preferences)
-
-        elif 'ice' in msg:
-            ice = msg['ice']
-            candidate = ice['candidate']
-            sdpmlineindex = ice['sdpMLineIndex']
-            self.webrtc.emit('add-ice-candidate', sdpmlineindex, candidate)
 
     async def publish(self):
         pc = RTCPeerConnection()
@@ -293,8 +289,8 @@ class WebRTCClient:
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
 
-        request = { "request": "configure", "audio": True, "video": True }
-        sdp = { "sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type }
+        request = {"request": "configure", "audio": True, "video": True}
+        sdp = {"sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type}
         await self.signaling.sendmessage(request, sdp)
 
     async def loop(self, signaling, room, display, id):
@@ -304,7 +300,8 @@ class WebRTCClient:
         loop = asyncio.get_event_loop()
         loop.create_task(signaling.keepalive())
 
-        joinmessage = { "request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display, "id": int(id) }
+        joinmessage = {"request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display,
+                       "id": int(id)}
         await signaling.sendmessage(joinmessage)
 
         assert signaling.conn
@@ -315,13 +312,13 @@ class WebRTCClient:
                 if isinstance(msg, PluginData):
                     await self.handle_plugin_data(msg)
                 elif isinstance(msg, Media):
-                    print (msg)
+                    print(msg)
                 elif isinstance(msg, WebrtcUp):
-                    print (msg)
+                    print(msg)
                 elif isinstance(msg, SlowLink):
-                    print (msg)
+                    print(msg)
                 elif isinstance(msg, HangUp):
-                    print (msg)
+                    print(msg)
                 elif not isinstance(msg, Ack):
                     print(msg)
             except (KeyboardInterrupt, ConnectionClosed):
@@ -329,11 +326,14 @@ class WebRTCClient:
 
         return 0
 
+
 def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
+
 class GstH264Camera:
-    RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal,stream-format=byte-stream ! appsink emit-signals=True name=h264_sink"
+    RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal," \
+                    "stream-format=byte-stream ! appsink emit-signals=True name=h264_sink "
 
     def __init__(self, output, rtsp):
         source = GstH264Camera.RTSP_PIPELINE.format(rtsp)
@@ -353,6 +353,7 @@ class GstH264Camera:
 
     def stop(self):
         self.pipeline.set_state(Gst.State.NULL)
+
 
 if __name__ == "__main__":
     Gst.init(None)
@@ -402,7 +403,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(
-             rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
+            rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
         )
     except KeyboardInterrupt:
         pass
