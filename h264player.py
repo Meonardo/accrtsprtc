@@ -48,16 +48,17 @@ class StreamPlayer (threading.Thread):
         if self.isRunning:
             self.isRunning = False
             self.container.close()
+        print("H264 Streaming Player was shutdown!")
 
 
-class GstH264Camera:
+class GstH264Player:
     RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal," \
                     "stream-format=byte-stream ! appsink emit-signals=True name=h264_sink "
 
     def __init__(self, output, rtsp):
         Gst.init(None)
 
-        source = GstH264Camera.RTSP_PIPELINE.format(rtsp)
+        source = GstH264Player.RTSP_PIPELINE.format(rtsp)
         self.pipeline = Gst.parse_launch(source)
         self.output = output
         self.appsink = self.pipeline.get_by_name('h264_sink')
@@ -74,3 +75,4 @@ class GstH264Camera:
 
     def stop(self):
         self.pipeline.set_state(Gst.State.NULL)
+        print("GstH264Player Streaming Player was shutdown!")

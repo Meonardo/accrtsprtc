@@ -23,7 +23,7 @@ ROUTE_STOP = "/camera/push/stop"
 ROUTE_START = "/camera/push/start"
 
 RTSP_ = ""
-JANUS_PID = -1
+JANUS: subprocess.Popen = None
 
 
 class HTTPStatusError(Exception):
@@ -159,25 +159,33 @@ class RequestHandler(BaseHTTPRequestHandler):
     def launch_janus(rtsp, room, display, identify, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
-        global JANUS_PID
-        JANUS_PID = subprocess.Popen(
-            ['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--id', identify,
-             '--verbose']).pid
+        global JANUS
+        JANUS = subprocess.Popen(
+            ['python3', janus_path,
+             janus_signaling,
+             '--play-from', rtsp,
+             '--name', display,
+             '--room', room,
+             '--id', identify,
+             '--verbose'],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # Check stop command
     def check_stop(self, form):
         global RTSP_
-        global JANUS_PID
+        global JANUS
         rtsp = form["rtsp"]
         if len(rtsp) == 0:
             return self.comm_response(False, -2, "Please input correct RTSP address!")
         if rtsp != RTSP_:
             return self.comm_response(False, -4, "No RTSP stream published!")
-        if JANUS_PID != -1:
-            print("Stopping SubProcess.")
+        if JANUS is not None:
+            print("Stopping SubProcess first!")
+
             RTSP_ = ""
-            os.kill(JANUS_PID, signal.SIGINT)
-            JANUS_PID = -1
+            os.kill(JANUS.pid, signal.SIGINT)
+            JANUS.terminate()
+            JANUS = None
 
             msg = rtsp + " Stopped!"
             return self.comm_response(True, 1, msg)
@@ -201,8 +209,9 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print('^C received, shutting down the web server')
-        if JANUS_PID != -1:
-            os.kill(JANUS_PID, signal.SIGINT)
-            JANUS_PID = -1
+        if JANUS is not None:
+            os.kill(JANUS.pid, signal.SIGINT)
+            JANUS.terminate()
+            JANUS = None
 
         server.socket.close()

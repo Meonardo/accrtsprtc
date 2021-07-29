@@ -15,7 +15,7 @@ from h264track import H264EncodedStreamTrack, FFmpegH264Track
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from transformer import VideoTransformTrack
-from h264player import GstH264Camera, StreamPlayer
+from h264player import GstH264Player, StreamPlayer
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -287,7 +287,7 @@ class WebRTCClient:
             player = StreamPlayer(self.rtsp)
             video_track = FFmpegH264Track(player)
             self.stream_player = player
-            # self.camera = GstH264Camera(video_track, self.rtsp)
+            # self.camera = GstH264Player(video_track, self.rtsp)
 
             # video_track = VideoTransformTrack(self.relay.subscribe(video_track), transform="rotate")
             pc.addTrack(video_track)
