@@ -162,7 +162,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         global JANUS_PID
         JANUS_PID = subprocess.Popen(
             ['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--id', identify,
-             '--verbose']).poll()
+             '--verbose']).pid
 
     # Check stop command
     def check_stop(self, form):
@@ -203,6 +203,6 @@ if __name__ == "__main__":
         print('^C received, shutting down the web server')
         if JANUS_PID != -1:
             os.kill(JANUS_PID, signal.SIGINT)
-            JANUS_PROCESS = None
+            JANUS_PID = -1
 
         server.socket.close()

@@ -7,16 +7,15 @@ import string
 import websockets
 import json
 import attr
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
+
 from websockets.exceptions import ConnectionClosed
 from aiortc.contrib.media import MediaPlayer, MediaRecorder, MediaRelay
 from collections import OrderedDict
-from h264track import H264EncodedStreamTrack
+from h264track import H264EncodedStreamTrack, FFmpegH264Track
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from transformer import VideoTransformTrack
+from h264player import GstH264Camera, StreamPlayer
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -32,7 +31,6 @@ h264_capability = RTCRtpCodecCapability(
 preferences = [h264_capability]
 RATE = 30
 
-pcs = set()
 
 @attr.s
 class JanusEvent:
@@ -230,11 +228,14 @@ class WebRTCClient:
         self.rtsp = rtsp
         self.pc = None
         self.camera = None
+        self.stream_player = None
         self.relay: MediaRelay = MediaRelay()
 
     async def destroy(self):
         if self.camera is not None:
             self.camera.stop()
+        if self.stream_player is not None:
+            self.stream_player.stop()
         await self.signaling.leave()
         await self.pc.close()
 
@@ -269,7 +270,6 @@ class WebRTCClient:
     async def publish(self):
         pc = RTCPeerConnection()
         self.pc = pc
-        pcs.add(pc)
 
         # configure media
         if self.rtsp is not None:
@@ -284,7 +284,9 @@ class WebRTCClient:
             if player.audio is not None:
                 pc.addTrack(player.audio)
 
-            video_track = MediaPlayer(self.rtsp).video
+            player = StreamPlayer(self.rtsp)
+            video_track = FFmpegH264Track(player)
+            self.stream_player = player
             # self.camera = GstH264Camera(video_track, self.rtsp)
 
             # video_track = VideoTransformTrack(self.relay.subscribe(video_track), transform="rotate")
@@ -306,9 +308,9 @@ class WebRTCClient:
         loop = asyncio.get_event_loop()
         loop.create_task(signaling.keepalive())
 
-        joinmessage = {"request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display,
+        message = {"request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display,
                        "id": int(id)}
-        await signaling.sendmessage(joinmessage)
+        await signaling.sendmessage(message)
 
         assert signaling.conn
 
@@ -335,32 +337,7 @@ def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
 
-class GstH264Camera:
-    RTSP_PIPELINE = "rtspsrc location={} latency=0 ! rtph264depay ! queue ! h264parse ! video/x-h264,alignment=nal," \
-                    "stream-format=byte-stream ! appsink emit-signals=True name=h264_sink "
-
-    def __init__(self, output, rtsp):
-        source = GstH264Camera.RTSP_PIPELINE.format(rtsp)
-        self.pipeline = Gst.parse_launch(source)
-        self.output = output
-        self.appsink = self.pipeline.get_by_name('h264_sink')
-        self.appsink.connect("new-sample", self.on_buffer, None)
-        self.pipeline.set_state(Gst.State.PLAYING)
-
-    def on_buffer(self, sink, data) -> Gst.FlowReturn:
-        sample = sink.emit("pull-sample")
-        if isinstance(sample, Gst.Sample):
-            buffer = sample.get_buffer()
-            byte_buffer = buffer.extract_dup(0, buffer.get_size())
-            self.output.write(byte_buffer)
-        return Gst.FlowReturn.OK
-
-    def stop(self):
-        self.pipeline.set_state(Gst.State.NULL)
-
-
 if __name__ == "__main__":
-    Gst.init(None)
 
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. ws://localhost:8188")

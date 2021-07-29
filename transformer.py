@@ -1,5 +1,4 @@
 import cv2
-
 from av.filter import Filter, Graph
 from threading import Timer
 from av import VideoFrame

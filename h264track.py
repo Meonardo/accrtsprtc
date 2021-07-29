@@ -5,6 +5,8 @@ from struct import pack
 from typing import Iterator, List, Tuple
 
 from aiortc.mediastreams import EncodedStreamTrack
+from aiortc.mediastreams import VIDEO_TIME_BASE, convert_timebase
+from h264player import StreamPlayer
 
 PACKET_MAX = 1300
 
@@ -18,13 +20,12 @@ STAP_A_HEADER_SIZE = NAL_HEADER_SIZE + LENGTH_FIELD_SIZE
 
 
 class H264EncodedStreamTrack(EncodedStreamTrack):
-
     kind = "video"
 
     _start: float
     _timestamp: int
 
-    def __init__(self, video_rate, clock_rate=90000) -> None:
+    def __init__(self, video_rate=30, clock_rate=90000) -> None:
         super().__init__()
         self.nal_queue = Queue(3)
         self._timestamp = 0
@@ -39,7 +40,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
         else:
             self.nal_buffer += buf
         if (
-            len(self.nal_buffer) < 64
+                len(self.nal_buffer) < 64
         ):  # Just making sure to pack SPS/PPS within a single buffer
             return
         if not self.nal_queue.full():
@@ -69,10 +70,10 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
         while offset < len(data):
             if num_larger_packets > 0:
                 num_larger_packets -= 1
-                payload = data[offset : offset + package_size + 1]
+                payload = data[offset: offset + package_size + 1]
                 offset += package_size + 1
             else:
-                payload = data[offset : offset + package_size]
+                payload = data[offset: offset + package_size]
                 offset += package_size
 
             if offset == len(data):
@@ -87,7 +88,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
 
     @staticmethod
     def _packetize_stap_a(
-        data: bytes, packages_iterator: Iterator[bytes]
+            data: bytes, packages_iterator: Iterator[bytes]
     ) -> Tuple[bytes, bytes]:
         counter = 0
         available_size = PACKET_MAX - STAP_A_HEADER_SIZE
@@ -142,7 +143,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
         i = 0
         while True:
             while (buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0x01) and (
-                buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0 or buf[i + 3] != 0x01
+                    buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0 or buf[i + 3] != 0x01
             ):
                 i += 1  # skip leading zero
                 if i + 4 >= len(buf):
@@ -152,7 +153,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
             i += 3
             nal_start = i
             while (buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0) and (
-                buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0x01
+                    buf[i] != 0 or buf[i + 1] != 0 or buf[i + 2] != 0x01
             ):
                 i += 1
                 # FIXME: the next line fails when reading a nal that ends
@@ -180,4 +181,22 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
         if len(packets) > 0:
             self._timestamp += int(self._frame_time * self._clock_rate)
         timestamp = self._timestamp
+        return packets, timestamp
+
+
+class FFmpegH264Track(H264EncodedStreamTrack):
+    kind = "video"
+
+    def __init__(self, player: StreamPlayer):
+        super().__init__()
+        self.player = player
+        player.start()
+
+    async def recv_encoded(self, keyframe=False):
+        while True:
+            packet = await self.player.packets.get()
+            if packet.dts is not None:
+                break
+        timestamp = convert_timebase(packet.pts, packet.time_base, VIDEO_TIME_BASE)
+        packets = self._packetize(self._split_bitstream(packet.to_bytes()))
         return packets, timestamp
