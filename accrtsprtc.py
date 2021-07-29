@@ -159,7 +159,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def launch_janus(rtsp, room, display, identify, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
-        global JANUS_PROCESS
+        global JANUS_PID
         JANUS_PID = subprocess.Popen(
             ['python3', janus_path, janus_signaling, '--play-from', rtsp, '--name', display, '--room', room, '--id', identify,
              '--verbose']).poll()
@@ -176,10 +176,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if JANUS_PID != -1:
             print("Stopping SubProcess.")
             RTSP_ = ""
-            # JANUS_PROCESS.terminate()
             os.kill(JANUS_PID, signal.SIGINT)
-
             JANUS_PID = -1
+
             msg = rtsp + " Stopped!"
             return self.comm_response(True, 1, msg)
         return self.comm_response(False, -5, "No subproc Found!")

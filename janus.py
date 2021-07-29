@@ -11,11 +11,12 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 from websockets.exceptions import ConnectionClosed
-from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc.contrib.media import MediaPlayer, MediaRecorder, MediaRelay
 from collections import OrderedDict
 from h264track import H264EncodedStreamTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
+from transformer import VideoTransformTrack
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -31,6 +32,7 @@ h264_capability = RTCRtpCodecCapability(
 preferences = [h264_capability]
 RATE = 30
 
+pcs = set()
 
 @attr.s
 class JanusEvent:
@@ -228,6 +230,7 @@ class WebRTCClient:
         self.rtsp = rtsp
         self.pc = None
         self.camera = None
+        self.relay: MediaRelay = MediaRelay()
 
     async def destroy(self):
         if self.camera is not None:
@@ -266,6 +269,7 @@ class WebRTCClient:
     async def publish(self):
         pc = RTCPeerConnection()
         self.pc = pc
+        pcs.add(pc)
 
         # configure media
         if self.rtsp is not None:
@@ -280,8 +284,10 @@ class WebRTCClient:
             if player.audio is not None:
                 pc.addTrack(player.audio)
 
-            video_track = H264EncodedStreamTrack(RATE)
-            self.camera = GstH264Camera(video_track, self.rtsp)
+            video_track = MediaPlayer(self.rtsp).video
+            # self.camera = GstH264Camera(video_track, self.rtsp)
+
+            # video_track = VideoTransformTrack(self.relay.subscribe(video_track), transform="rotate")
             pc.addTrack(video_track)
         else:
             raise Exception("No Media Input! Stop Now.")
@@ -323,8 +329,6 @@ class WebRTCClient:
                     print(msg)
             except (KeyboardInterrupt, ConnectionClosed):
                 return
-
-        return 0
 
 
 def transaction_id():

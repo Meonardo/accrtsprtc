@@ -168,7 +168,7 @@ class H264EncodedStreamTrack(EncodedStreamTrack):
             if buf_type != 0x06:  # Make sure to discard SEI NALUs
                 yield buf[nal_start:nal_end]
 
-    async def recv_encoded(self, keyframe=False) -> List[bytes]:
+    async def recv_encoded(self, keyframe=False):
         while True:
             if self.nal_queue.empty():
                 await asyncio.sleep(self._frame_time)
