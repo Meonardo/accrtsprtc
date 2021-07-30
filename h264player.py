@@ -11,8 +11,9 @@ class StreamPlayer (threading.Thread):
         threading.Thread.__init__(self)
         # flag to indicate that the thread should stop
         self.isRunning = False
+        self.rtsp = rtsp
         self.packets = asyncio.Queue()
-        self.name = "StreamPlayer-Threading"
+        self.name = "StreamPlayer--" + rtsp
         self.loop = loop
 
         options = {'rtsp_transport': 'tcp'}

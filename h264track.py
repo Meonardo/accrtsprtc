@@ -1,12 +1,15 @@
 import asyncio
 import math
+import av
 from queue import Queue
 from struct import pack
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Optional
 
 from aiortc.mediastreams import EncodedStreamTrack
 from aiortc.mediastreams import VIDEO_TIME_BASE, convert_timebase
 from h264player import StreamPlayer
+from av import Packet
+from av.filter import Filter, Graph
 
 PACKET_MAX = 1300
 
@@ -200,3 +203,135 @@ class FFmpegH264Track(H264EncodedStreamTrack):
         timestamp = convert_timebase(packet.pts, packet.time_base, VIDEO_TIME_BASE)
         packets = self._packetize(self._split_bitstream(packet.to_bytes()))
         return packets, timestamp
+
+
+def link_nodes(*nodes):
+    for c, n in zip(nodes, nodes[1:]):
+        c.link_to(n)
+
+
+class MixGraph:
+    def __init__(self, screen: StreamPlayer, cam: StreamPlayer):
+        self.__cam = cam
+        self.__screen = screen
+        self.__graph = Graph()
+        self.sink = None
+        self.cam_src = None
+        self.screen_src = None
+
+        self.__configure()
+
+    def __configure(self):
+        if self.cam_src is not None or \
+                self.screen_src is not None:
+            return
+
+        graph = self.__graph
+        cam_src = graph.add_buffer(template=self.__cam.container.streams.video[0])
+        screen_src = graph.add_buffer(template=self.__screen.container.streams.video[0])
+
+        scale = graph.add("scale", "iw/3:ih/3")
+        cam_src.link_to(scale, 0, 0)
+
+        overlay = graph.add("overlay", "main_w-overlay_w-20:main_h-overlay_h-20")
+        screen_src.link_to(overlay, 0, 0)
+        scale.link_to(overlay, 0, 1)
+
+        sink = graph.add('buffersink')
+        overlay.link_to(sink, 0, 0)
+        graph.configure()
+
+        self.cam_src = cam_src
+        self.screen_src = screen_src
+        self.sink = sink
+
+
+class MixTrack(H264EncodedStreamTrack):
+    kind = "video"
+    cam: StreamPlayer
+    screen: Optional[StreamPlayer] = None
+    graph: Optional[MixGraph] = None
+    record_path = None
+    __out_video_stream = None
+    __record_container = None
+
+    def __init__(self, cam: StreamPlayer, screen: StreamPlayer=None):
+        super().__init__()
+        self.cam = cam
+        self.screen = screen
+        cam.start()
+        if screen is not None:
+            screen.start()
+            self.graph = MixGraph(cam=cam, screen=screen)
+        self.__configure()
+
+    def __configure(self):
+        dir_path = "/Users/amdox/File/Combine/.recordings/out.ts"
+        output = av.open(dir_path, "w")
+        self.__record_container = output
+        self.record_path = dir_path
+
+        out_video_stream = output.add_stream('h264', rate=30, options={'profile': 'Main',
+                                                                       'movflags': 'faststart'})
+
+        out_video_stream.width = 1920
+        out_video_stream.height = 1080
+        out_video_stream.pix_fmt = 'yuv420p'
+        self.__out_video_stream = out_video_stream
+
+    async def recv_encoded(self, keyframe=False):
+        packet_s: Optional[Packet] = None
+        packet: Optional[Packet] = None
+
+        if self.screen is not None:
+            while True:
+                packet_s = await self.screen.packets.get()
+                if packet_s.dts is not None:
+                    break
+        while True:
+            if self.cam is not None:
+                packet = await self.cam.packets.get()
+            else:
+                break
+
+            if packet.dts is not None:
+                break
+
+        if packet_s is not None and packet is not None:
+            frame = await self.merge(packet_s, packet)
+            if frame is not None:
+                encoded_packets = self.__out_video_stream.encode(frame)
+                if len(encoded_packets) > 0:
+                    print("----------- Merged Frame ----------")
+                    encoded_packet = encoded_packets[0]
+                    self.__record_container.mux(encoded_packet)
+                    packets = self._packetize(self._split_bitstream(encoded_packet.to_bytes()))
+                    timestamp = convert_timebase(encoded_packet.pts, encoded_packet.time_base, VIDEO_TIME_BASE)
+                else:
+                    print("----------- Encode Failed ----------")
+                    packets = self._packetize(self._split_bitstream(packet.to_bytes()))
+                    timestamp = convert_timebase(packet.pts, packet.time_base, VIDEO_TIME_BASE)
+                return packets, timestamp
+            else:
+                print("----------- Camera Only ----------")
+                timestamp = convert_timebase(packet.pts, packet.time_base, VIDEO_TIME_BASE)
+                packets = self._packetize(self._split_bitstream(packet.to_bytes()))
+                return packets, timestamp
+        else:
+            timestamp = convert_timebase(packet.pts, packet.time_base, VIDEO_TIME_BASE)
+            packets = self._packetize(self._split_bitstream(packet.to_bytes()))
+            return packets, timestamp
+
+    async def merge(self, screen: Packet, cam: Packet):
+        s = screen.decode()
+        c = cam.decode()
+        for frame_s, frame_c in zip(s, c):
+            self.graph.screen_src.push(frame_s)
+            self.graph.cam_src.push(frame_c)
+
+            ofr = self.graph.sink.pull()
+            ofr.pts = None
+            return ofr
+
+
+

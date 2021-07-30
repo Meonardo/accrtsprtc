@@ -11,10 +11,9 @@ import attr
 from websockets.exceptions import ConnectionClosed
 from aiortc.contrib.media import MediaPlayer, MediaRecorder, MediaRelay
 from collections import OrderedDict
-from h264track import H264EncodedStreamTrack, FFmpegH264Track
+from h264track import H264EncodedStreamTrack, FFmpegH264Track, MixTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
-from transformer import VideoTransformTrack
 from h264player import GstH264Player, StreamPlayer
 
 capabilities = RTCRtpSender.getCapabilities("video")
@@ -284,11 +283,11 @@ class WebRTCClient:
             if player.audio is not None:
                 pc.addTrack(player.audio)
 
-            player = StreamPlayer(self.rtsp)
-            video_track = FFmpegH264Track(player)
-            self.stream_player = player
-            # self.camera = GstH264Player(video_track, self.rtsp)
+            screen_player = StreamPlayer(self.rtsp)
+            cam_player = StreamPlayer("rtsp://192.168.5.201:554/main.h264")
+            video_track = MixTrack(cam_player, screen_player)
 
+            # self.camera = GstH264Player(video_track, self.rtsp)
             # video_track = VideoTransformTrack(self.relay.subscribe(video_track), transform="rotate")
             pc.addTrack(video_track)
         else:
