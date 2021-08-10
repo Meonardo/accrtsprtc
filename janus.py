@@ -14,7 +14,9 @@ from collections import OrderedDict
 from h264track import H264EncodedStreamTrack, FFmpegH264Track, MixTrack
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
-from h264player import GstH264Player, StreamPlayer
+from streamplayer import StreamPlayer
+from typing import Optional
+
 
 capabilities = RTCRtpSender.getCapabilities("video")
 codec_parameters = OrderedDict(
@@ -227,8 +229,7 @@ class WebRTCClient:
         self.rtsp = rtsp
         self.pc = None
         self.camera = None
-        self.stream_player = None
-        self.relay: MediaRelay = MediaRelay()
+        self.stream_player: Optional[StreamPlayer] = None
 
     async def destroy(self):
         if self.camera is not None:
@@ -283,13 +284,11 @@ class WebRTCClient:
             if player.audio is not None:
                 pc.addTrack(player.audio)
 
-            screen_player = StreamPlayer(self.rtsp)
-            cam_player = StreamPlayer("rtsp://192.168.5.201:554/main.h264")
-            video_track = MixTrack(cam_player, screen_player)
-
+            rtsp_player = StreamPlayer(self.rtsp)
+            video_track = FFmpegH264Track(rtsp_player)
             # self.camera = GstH264Player(video_track, self.rtsp)
-            # video_track = VideoTransformTrack(self.relay.subscribe(video_track), transform="rotate")
             pc.addTrack(video_track)
+            self.rtsp_player = rtsp_player
         else:
             raise Exception("No Media Input! Stop Now.")
 
