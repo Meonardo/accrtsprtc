@@ -7,7 +7,8 @@ from typing import Iterator, List, Tuple, Optional
 
 from aiortc.mediastreams import EncodedStreamTrack
 from aiortc.mediastreams import VIDEO_TIME_BASE, convert_timebase
-from gstplayer import StreamPlayer
+from gstplayer import GstH264Player
+from streamplayer import StreamPlayer
 from av import Packet
 from av.filter import Filter, Graph
 

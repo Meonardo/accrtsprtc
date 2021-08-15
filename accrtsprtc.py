@@ -22,8 +22,7 @@ ROUTE_INDEX = "/index.html"
 ROUTE_STOP = "/camera/push/stop"
 ROUTE_START = "/camera/push/start"
 
-RTSP_ = ""
-JANUS: subprocess.Popen = None
+CAMS = {}
 
 
 class HTTPStatusError(Exception):
@@ -124,7 +123,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         r = {"success": success, "code": code, "data": data}
         return r
 
-    # check start command 
+    # check start command
     def check_start(self, form):
         display = form["display"] or "LocalCamera"
         room = form["room"]
@@ -141,26 +140,22 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         janus_signaling = form["janus"]
 
-        global RTSP_
-        if RTSP_ is not None:
-            print("Old RTSP stream is publishing, stop it first, then publish new RTSP stream ", rtsp)
-            self.check_stop({"room": room, "rtsp": RTSP_})
-
-        if rtsp != RTSP_:
-            RTSP_ = rtsp
-            self.launch_janus(rtsp, room, display, identify, janus_signaling)
+        if rtsp in CAMS:
+            print("Current RTSP stream ", rtsp, " is publishing...")
+            self.comm_response(False, -3, "You've published the stream!")
+            return
+        else:
+            proc = self.launch_janus(rtsp, room, display, identify, janus_signaling)
             msg = rtsp + " has been published to VideoRoom " + room
+            CAMS[rtsp] = proc
             return self.comm_response(True, 1, msg)
-
-        return self.comm_response(False, -3, "You've published the stream!")
 
     # Launch Janus from janus.py
     @staticmethod
     def launch_janus(rtsp, room, display, identify, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
-        global JANUS
-        JANUS = subprocess.Popen(
+        return subprocess.Popen(
             ['python3', janus_path,
              janus_signaling,
              '--play-from', rtsp,
@@ -172,23 +167,22 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     # Check stop command
     def check_stop(self, form):
-        global RTSP_
-        global JANUS
         rtsp = form["rtsp"]
         if len(rtsp) == 0:
             return self.comm_response(False, -2, "Please input correct RTSP address!")
-        if rtsp != RTSP_:
-            return self.comm_response(False, -4, "No RTSP stream published!")
-        if JANUS is not None:
+
+        if rtsp not in CAMS:
+            return self.comm_response(False, -5, "No RTSP stream published!")
+
+        proc: subprocess.Popen = CAMS[rtsp]
+        if proc is not None:
             print("Stopping SubProcess first!")
-
-            RTSP_ = ""
-            os.kill(JANUS.pid, signal.SIGINT)
-            JANUS.terminate()
-            JANUS = None
-
+            os.kill(proc.pid, signal.SIGINT)
+            proc.terminate()
+            CAMS.pop(rtsp, None)
             msg = rtsp + " Stopped!"
             return self.comm_response(True, 1, msg)
+
         return self.comm_response(False, -5, "No subproc Found!")
 
 
@@ -209,9 +203,9 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print('^C received, shutting down the web server')
-        if JANUS is not None:
-            os.kill(JANUS.pid, signal.SIGINT)
-            JANUS.terminate()
-            JANUS = None
+        for k, v in CAMS.items:
+            os.kill(v.pid, signal.SIGINT)
+            v.terminate()
+        CAMS.clear()
 
         server.socket.close()
