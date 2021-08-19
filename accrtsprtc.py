@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from os import curdir, sep
 from collections import namedtuple
 
+import platform
 import os
 import cgi
 import json
@@ -159,8 +159,12 @@ class RequestHandler(BaseHTTPRequestHandler):
     def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
+        if platform.system() == "Windows":
+            python = "python"
+        else:
+            python = "python3"
         return subprocess.Popen(
-            ['python3', janus_path,
+            [python, janus_path,
              janus_signaling,
              '--play-from', rtsp,
              '--name', display,
