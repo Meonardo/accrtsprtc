@@ -138,6 +138,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if len(rtsp) == 0:
             return self.comm_response(False, -2, "Please input correct RTSP address!")
 
+        mic = form["mic"]
+        if len(rtsp) == 0:
+            return self.comm_response(False, -2, "Please select a microphone device!")
+
         janus_signaling = form["janus"]
 
         if rtsp in CAMS:
@@ -145,14 +149,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.comm_response(False, -3, "You've published the stream!")
             return
         else:
-            proc = self.launch_janus(rtsp, room, display, identify, janus_signaling)
+            proc = self.launch_janus(rtsp, room, display, identify, mic, janus_signaling)
             msg = rtsp + " has been published to VideoRoom " + room
             CAMS[rtsp] = proc
             return self.comm_response(True, 1, msg)
 
     # Launch Janus from janus.py
     @staticmethod
-    def launch_janus(rtsp, room, display, identify, janus_signaling='ws://127.0.0.1:8188'):
+    def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         return subprocess.Popen(
@@ -162,6 +166,7 @@ class RequestHandler(BaseHTTPRequestHandler):
              '--name', display,
              '--room', room,
              '--id', identify,
+             '--mic', mic,
              '--verbose'],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
@@ -203,9 +208,11 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print('^C received, shutting down the web server')
-        for k, v in CAMS.items:
-            os.kill(v.pid, signal.SIGINT)
-            v.terminate()
+        for key in CAMS.keys():
+            proc = CAMS[key]
+            if proc is not None:
+                os.kill(proc.pid, signal.SIGINT)
+                proc.terminate()
         CAMS.clear()
 
         server.socket.close()

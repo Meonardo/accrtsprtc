@@ -8,10 +8,10 @@ import websockets
 import json
 import attr
 
-from websockets.exceptions import ConnectionClosed
-from aiortc.contrib.media import MediaPlayer, MediaRecorder, MediaRelay
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
+from aiortc.contrib.media import MediaPlayer, MediaRecorder
 from collections import OrderedDict
-from h264track import H264EncodedStreamTrack, FFmpegH264Track, MixTrack
+from h264track import FFmpegH264Track
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
@@ -223,10 +223,11 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, id_, signaling: JanusGateway, rtsp):
+    def __init__(self, id_, signaling: JanusGateway, rtsp, mic):
         self.id_ = id_
         self.signaling = signaling
         self.rtsp = rtsp
+        self.mic = mic
         self.pc = None
         self.camera = None
         self.stream_player: Optional[StreamPlayer] = None
@@ -279,7 +280,10 @@ class WebRTCClient:
             elif platform.system() == "Linux":
                 player = MediaPlayer("hw:2", format="alsa")
             else:
-                player = MediaPlayer("default", format="dshow")
+                if self.mic is None:
+                    self.mic = "Microphone (High Definition Audio Device)"
+                input_a = "audio={}".format(self.mic)
+                player = MediaPlayer(input_a, format="dshow")
 
             if player.audio is not None:
                 pc.addTrack(player.audio)
@@ -327,7 +331,8 @@ class WebRTCClient:
                     print(msg)
                 elif not isinstance(msg, Ack):
                     print(msg)
-            except (KeyboardInterrupt, ConnectionClosed):
+            except (KeyboardInterrupt, ConnectionClosed, ConnectionClosedError) as e:
+                print("Websocket exception: ", e)
                 return
 
 
@@ -356,6 +361,7 @@ if __name__ == "__main__":
     ),
     parser.add_argument("--play-from", help="Read the media from a file and sent it."),
     parser.add_argument("--record-to", help="Write received media to a file."),
+    parser.add_argument("--mic", help="Specific a microphone device to record audio."),
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
 
@@ -377,7 +383,7 @@ if __name__ == "__main__":
 
     # create webrtc client
     our_id = random.randrange(10, 10000)
-    rtc_client = WebRTCClient(our_id, signaling, play_from)
+    rtc_client = WebRTCClient(our_id, signaling, play_from, args.mic)
 
     loop = asyncio.get_event_loop()
     try:

@@ -2,6 +2,8 @@
 import av
 import threading
 import asyncio
+import errno
+import time
 
 
 class StreamPlayer (threading.Thread):
@@ -24,23 +26,23 @@ class StreamPlayer (threading.Thread):
         """
         print("starting player thread")
         self.isRunning = True
+        video_stream = self.container.streams.video[0]
 
         while self.isRunning:
             if not self.isRunning:
                 break
-            for i, packet in enumerate(self.container.demux()):
-                try:
-                    if packet.dts is None:
-                        continue
-
-                    if packet.stream.type == 'video':
-                        if not self.packets.full():
-                            asyncio.run_coroutine_threadsafe(self.packets.put(packet), self.loop)
-                            # self.packets.put(packet)
-
-                except InterruptedError:
-                    self.isRunning = False
+            try:
+                packet = next(self.container.demux(video_stream))
+                # print(self.debug_desc + " Original Decoded Frame: ", frame)
+            except (av.AVError, BlockingIOError, StopIteration) as exc:
+                if isinstance(exc, av.FFmpegError) and exc.errno == errno.EAGAIN:
+                    time.sleep(0.01)
+                    continue
+                else:
                     break
+            if not self.packets.full():
+                asyncio.run_coroutine_threadsafe(self.packets.put(packet), self.loop)
+
         return
 
     def stop(self):
