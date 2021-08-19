@@ -10,7 +10,7 @@ with open(about_file, encoding="utf-8") as fp:
     exec(fp.read(), about)
 
 cffi_modules = [
-    "src/_cffi_src/build_opus.py:ffibuilder",
+    "build_opus.py:ffibuilder",
     # "src/_cffi_src/build_vpx.py:ffibuilder",
 ]
 install_requires = [
