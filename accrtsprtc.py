@@ -120,7 +120,11 @@ class RequestHandler(BaseHTTPRequestHandler):
     # Common Response
     @staticmethod
     def comm_response(success, code, data):
-        r = {"success": success, "code": code, "data": data}
+        if success:
+            state = 1
+        else:
+            state = code
+        r = {"state": state, "code": data}
         return r
 
     # check start command
