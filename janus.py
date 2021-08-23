@@ -228,17 +228,14 @@ class WebRTCClient:
         self.signaling = signaling
         self.rtsp = rtsp
         self.mic = mic
-        self.pc = None
-        self.camera = None
+        self.pc: Optional[RTCPeerConnection] = None
         self.stream_player: Optional[StreamPlayer] = None
 
     async def destroy(self):
-        if self.camera is not None:
-            self.camera.stop()
-        if self.stream_player is not None:
-            self.stream_player.stop()
         await self.signaling.leave()
         await self.pc.close()
+        if self.stream_player is not None:
+            self.stream_player.stop()
 
     async def handle_plugin_data(self, data):
         print("handle plugin data: \n", data)
@@ -310,7 +307,7 @@ class WebRTCClient:
         loop = asyncio.get_event_loop()
         loop.create_task(signaling.keepalive())
 
-        message = {"request": "join", "ptype": "publisher", "room": room, "pin": str(room), "display": display,
+        message = {"request": "join", "ptype": "publisher", "room": int(room), "pin": str(room), "display": display,
                        "id": int(id)}
         await signaling.sendmessage(message)
 
@@ -341,62 +338,36 @@ def transaction_id():
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. ws://localhost:8188")
-    parser.add_argument(
-        "--room",
-        type=int,
-        default=1234,
-        help="The video room ID to join (default: 1234).",
-    ),
-    parser.add_argument(
-        "--name",
-        default="LocalCamera",
-        help="The name display in the room",
-    ),
-    parser.add_argument(
-        "--id",
-        help="The ID of the camera in the videoroom(publishId)",
-    ),
-    parser.add_argument("--play-from", help="Read the media from a file and sent it."),
-    parser.add_argument("--record-to", help="Write received media to a file."),
-    parser.add_argument("--mic", help="Specific a microphone device to record audio."),
+    parser.add_argument("--rtsp", help="Read the media from a file and sent it.")
+    parser.add_argument("--room", default="1234", help="The video room ID to join (default: 1234).",)
+    parser.add_argument("--name", default="LocalCamera", help="The name display in the room",)
+    parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)",)
+    parser.add_argument("--mic", help="Specific a microphone device to record audio.")
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
-
     print("Received Params:", args)
 
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
 
-    play_from = args.play_from
-
-    # create media sink
-    if args.record_to:
-        recorder = MediaRecorder(args.record_to)
-    else:
-        recorder = None
-
+    rtsp = args.rtsp
     # create signaling client
     signaling = JanusGateway(args.url)
-
     # create webrtc client
     our_id = random.randrange(10, 10000)
-    rtc_client = WebRTCClient(our_id, signaling, play_from, args.mic)
+    rtc_client = WebRTCClient(our_id, signaling, rtsp, args.mic)
 
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(
             rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
         )
-    except KeyboardInterrupt:
-        pass
+    except Exception as e:
+        print("------------------------Exception: ", e)
     finally:
         print("Stopping now!")
-        if recorder is not None:
-            loop.run_until_complete(recorder.stop())
-
         # 销毁 RTC client
         loop.run_until_complete(rtc_client.destroy())
         # 关闭 WS

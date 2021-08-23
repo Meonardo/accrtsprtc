@@ -82,7 +82,7 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
     return subprocess.Popen(
         [python, janus_path,
          janus_signaling,
-         '--play-from', rtsp,
+         '--rtsp', rtsp,
          '--name', display,
          '--room', room,
          '--id', identify,
