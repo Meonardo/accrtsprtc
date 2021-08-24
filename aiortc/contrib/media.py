@@ -163,7 +163,7 @@ class PlayerStreamTrack(MediaStreamTrack):
         super().__init__()
         self.kind = kind
         self._player = player
-        self._queue = asyncio.Queue()
+        self._queue = asyncio.Queue(3)
         self._start = None
 
     async def recv(self):
