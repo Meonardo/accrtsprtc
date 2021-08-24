@@ -4,11 +4,15 @@ import os
 import argparse
 import subprocess
 import signal
+import time
+from pathlib import Path
 from aiohttp import web
 
 CAMS = {}
 # debug level 0 means nothing, 1 means debug
+LOGS = {}
 DEBUG_LEVEL = 0
+ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
 # common response
@@ -34,7 +38,7 @@ async def start(request):
 
     if 'debug' in form:
         debug = form['debug']
-        if not debug.isdigit():
+        if debug.isdigit():
             global DEBUG_LEVEL
             DEBUG_LEVEL = int(debug)
 
@@ -96,7 +100,18 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
            '--mic', mic]
     if DEBUG_LEVEL > 0:
         cmd.append("-v")
-    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        time_str = str(int(time.time()))
+        log_path = os.path.join(ROOT, 'log')
+        Path(log_path).mkdir(parents=True, exist_ok=True)
+        log_file_path = os.path.join(log_path, '{id}_{t}.txt'.format(id=identify, t=time_str))
+        print("---------- Log enabed file at: ", log_file_path)
+        log = open(log_file_path, 'w')
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log)
+        log_key = rtsp + '_log'
+        LOGS[log_key] = log
+    else:
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    return p
 
 
 # check stop command
@@ -123,6 +138,12 @@ async def stop(request):
         print("[END]\n")
         return json_response(True, 1, msg)
 
+    log_key = rtsp + "_log"
+    if log_key in LOGS:
+        log = LOGS[log_key]
+        if log is not None:
+            log.close()
+
     print("[END]\n")
     return json_response(False, -4, "No subproc Found!")
 
@@ -136,6 +157,11 @@ async def on_shutdown(app):
             os.kill(proc.pid, signal.SIGINT)
             proc.terminate()
     CAMS.clear()
+    for key in LOGS.keys():
+        log_handle = CAMS[key]
+        if log_handle is not None:
+            log_handle.close()
+    LOGS.clear()
 
 
 if __name__ == "__main__":

@@ -347,7 +347,7 @@ if __name__ == "__main__":
     print("Received Params:", args)
 
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
 
     rtsp = args.rtsp
     # create signaling client
