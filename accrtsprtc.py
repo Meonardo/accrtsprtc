@@ -7,6 +7,8 @@ import signal
 from aiohttp import web
 
 CAMS = {}
+# debug level 0 means nothing, 1 means debug
+DEBUG_LEVEL = 0
 
 
 # common response
@@ -29,6 +31,12 @@ async def index(request):
 async def start(request):
     form = await request.post()
     print(u"[START]\n:Incoming Request: {r}, form: {f}".format(r=request, f=form))
+
+    if 'debug' in form:
+        debug = form['debug']
+        if not debug.isdigit():
+            global DEBUG_LEVEL
+            DEBUG_LEVEL = int(debug)
 
     if 'room' not in form:
         return json_response(False, -1, "Please input Room number!")
@@ -79,16 +87,16 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
         python = "python"
     else:
         python = "python3"
-    return subprocess.Popen(
-        [python, janus_path,
-         janus_signaling,
-         '--rtsp', rtsp,
-         '--name', display,
-         '--room', room,
-         '--id', identify,
-         '--mic', mic,
-         '--verbose'],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    cmd = [python, janus_path,
+           janus_signaling,
+           '--rtsp', rtsp,
+           '--name', display,
+           '--room', room,
+           '--id', identify,
+           '--mic', mic]
+    if DEBUG_LEVEL > 0:
+        cmd.append("-v")
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
 
 # check stop command

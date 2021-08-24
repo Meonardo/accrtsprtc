@@ -223,8 +223,7 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, id_, signaling: JanusGateway, rtsp, mic):
-        self.id_ = id_
+    def __init__(self, signaling: JanusGateway, rtsp, mic):
         self.signaling = signaling
         self.rtsp = rtsp
         self.mic = mic
@@ -247,9 +246,7 @@ class WebRTCClient:
             if events_type == "joined":
                 await self.publish()
                 publishers = data.data["publishers"]
-                print("Publishes in the room: \n")
-                for publisher in publishers:
-                    print("id: %(id)s, display: %(display)s" % publisher)
+                print("Publishes in the room: ", publishers)
 
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
@@ -269,6 +266,7 @@ class WebRTCClient:
         pc = RTCPeerConnection()
         self.pc = pc
 
+        request = {"request": "configure", "audio": False, "video": True}
         # configure media
         if self.rtsp is not None:
             # for testing switch camera
@@ -283,20 +281,19 @@ class WebRTCClient:
                 player = MediaPlayer(input_a, format="dshow")
 
             if player.audio is not None:
+                request["audio"] = True
                 pc.addTrack(player.audio)
 
             rtsp_player = StreamPlayer(self.rtsp)
             video_track = FFmpegH264Track(rtsp_player)
             # self.camera = GstH264Player(video_track, self.rtsp)
             pc.addTrack(video_track)
-            self.rtsp_player = rtsp_player
+            self.stream_player = rtsp_player
         else:
             raise Exception("No Media Input! Stop Now.")
 
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
-
-        request = {"request": "configure", "audio": True, "video": True}
         sdp = {"sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type}
         await self.signaling.sendmessage(request, sdp)
 
@@ -340,7 +337,7 @@ def transaction_id():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. ws://localhost:8188")
-    parser.add_argument("--rtsp", help="Read the media from a file and sent it.")
+    parser.add_argument("--rtsp", help="RTSP stream address.")
     parser.add_argument("--room", default="1234", help="The video room ID to join (default: 1234).",)
     parser.add_argument("--name", default="LocalCamera", help="The name display in the room",)
     parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)",)
@@ -350,14 +347,13 @@ if __name__ == "__main__":
     print("Received Params:", args)
 
     if args.verbose:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.DEBUG)
 
     rtsp = args.rtsp
     # create signaling client
     signaling = JanusGateway(args.url)
     # create webrtc client
-    our_id = random.randrange(10, 10000)
-    rtc_client = WebRTCClient(our_id, signaling, rtsp, args.mic)
+    rtc_client = WebRTCClient(signaling, rtsp, args.mic)
 
     loop = asyncio.get_event_loop()
     try:
