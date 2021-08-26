@@ -106,6 +106,8 @@ class JanusGateway:
         await self.conn.close()
 
     async def leave(self):
+        if self.conn.closed:
+            return
         transaction = transaction_id()
         await self.conn.send(json.dumps({
             "janus": "destroy",
@@ -164,6 +166,8 @@ class JanusGateway:
 
         while True:
             try:
+                if self.conn.closed:
+                    return
                 await asyncio.sleep(30)
                 transaction = transaction_id()
                 await self.conn.send(json.dumps({
@@ -172,7 +176,7 @@ class JanusGateway:
                     "handle_id": self.handle,
                     "transaction": transaction
                 }))
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, ConnectionClosed, ConnectionClosedError) as e:
                 return
 
     async def recv(self):
@@ -326,7 +330,7 @@ class WebRTCClient:
                 elif not isinstance(msg, Ack):
                     print(msg)
             except (KeyboardInterrupt, ConnectionClosed, ConnectionClosedError) as e:
-                print("Websocket exception: ", e)
+                print("---------- Websocket exception: ", e)
                 return
 
 
