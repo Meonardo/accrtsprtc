@@ -22,6 +22,7 @@ def json_response(success, code, data):
         state = 1
     else:
         state = code
+    print("[END]\n")
     return web.json_response({"state": state, "code": data})
 
 
@@ -74,13 +75,11 @@ async def start(request):
 
     if rtsp in CAMS:
         print("Current RTSP stream ", rtsp, " is publishing...")
-        print("[END]\n")
         return json_response(False, -3, "You've published the stream!")
     else:
         proc = launch_janus(rtsp, room, display, publisher, mic, janus)
         msg = rtsp + " has been published to VideoRoom " + room
         CAMS[rtsp] = proc
-        print("[END]\n")
         return json_response(True, 1, msg)
 
 
@@ -135,7 +134,6 @@ async def stop(request):
         proc.terminate()
         CAMS.pop(rtsp, None)
         msg = rtsp + " Stopped!"
-        print("[END]\n")
         return json_response(True, 1, msg)
 
     log_key = rtsp + "_log"
@@ -144,7 +142,6 @@ async def stop(request):
         if log is not None:
             log.close()
 
-    print("[END]\n")
     return json_response(False, -4, "No subproc Found!")
 
 
