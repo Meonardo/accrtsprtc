@@ -331,7 +331,8 @@ class WebRTCClient:
                 elif not isinstance(msg, Ack):
                     print(msg)
             except (KeyboardInterrupt, ConnectionClosed, ConnectionClosedError) as e:
-                time_str = datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+                time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds')
                 print("---------- {} Websocket exception: ".format(time_str), e)
                 return
 
@@ -364,7 +365,8 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         print("========= RTSP ", rtsp)
-        print("WebSocket server started at ", datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds'))
+        print("WebSocket server started at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds'))
         loop.run_until_complete(
             rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
         )
@@ -372,7 +374,8 @@ if __name__ == "__main__":
         print("------------------------Exception: ", e)
     finally:
         print("========= RTSP ", rtsp)
-        print("WebSocket server stopped at ", datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds'))
+        print("WebSocket server stopped at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds'))
         # 销毁 RTC client
         loop.run_until_complete(rtc_client.destroy())
         # 关闭 WS
