@@ -1,5 +1,4 @@
 import os.path
-
 import setuptools
 
 root_dir = os.path.abspath(os.path.dirname(__file__))

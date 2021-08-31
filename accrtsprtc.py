@@ -24,7 +24,8 @@ def json_response(success, code, data):
     else:
         state = code
 
-    time_str = datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds')
     print("[END] {}\n".format(time_str))
     return web.json_response({"state": state, "code": data})
 
@@ -38,7 +39,8 @@ async def index(request):
 # check start command
 async def start(request):
     form = await request.post()
-    time_str = datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds')
     print(u"[START] {time}\n:Incoming Request: {r}, form: {f}".format(time=time_str, r=request, f=form))
 
     if 'debug' in form:
@@ -67,6 +69,9 @@ async def start(request):
         return json_response(False, -4, "Please select a microphone device!")
     mic = form["mic"]
 
+    if not check_mic(mic):
+        return json_response(False, -4, "Invalid microphone device!")
+
     if 'janus' not in form:
         return json_response(False, -5, "Please input legal janus server address!")
     janus = form["janus"]
@@ -85,6 +90,20 @@ async def start(request):
         msg = rtsp + " has been published to VideoRoom " + room
         CAMS[rtsp] = proc
         return json_response(True, 1, msg)
+
+
+def check_mic(mic):
+    if platform.system() == 'Darwin':
+        result = subprocess.run(['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
+                                capture_output=True, text=True)
+    else:
+        result = subprocess.run(['ffmpeg', '-f', 'dshow', '-list_devices', 'true', '-i', 'dummy'],
+                                capture_output=True, text=True)
+
+    print(result.stderr)
+    if mic in result.stdout or mic in result.stderr:
+        return True
+    return False
 
 
 def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0.0.1:8188'):
@@ -120,7 +139,8 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
 # check stop command
 async def stop(request):
     form = await request.post()
-    time_str = datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds')
     print(u"[START] {time}\n:Incoming Request: {r}, form: {f}".format(time=time_str, r=request, f=form))
 
     if 'rtsp' not in form:
@@ -187,7 +207,8 @@ if __name__ == "__main__":
     app.router.add_post("/camera/push/stop", stop)
 
     try:
-        print("RTSP push server started at ", datetime.datetime.utcnow().isoformat(sep=' ', timespec='milliseconds'))
+        print("RTSP push server started at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                           timespec='milliseconds'))
         web.run_app(
             app, access_log=None, host=args.host, port=args.p
         )
