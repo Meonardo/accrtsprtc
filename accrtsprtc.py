@@ -97,12 +97,16 @@ def check_mic(mic):
         result = subprocess.run(['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
                                 capture_output=True, text=True)
     else:
-        result = subprocess.run(['ffmpeg', '-f', 'dshow', '-list_devices', 'true', '-i', 'dummy'],
-                                capture_output=True, text=True)
+        result = subprocess.run(['ffmpeg', '-f', 'dshow', '-list_devices', '1', '-i', 'dummy'],
+                                capture_output=True, text=True, encoding="utf-8")
 
-    print(result.stderr)
-    if mic in result.stdout or mic in result.stderr:
-        return True
+    # print(result)
+    if result.stderr is not None:
+        if mic in result.stderr:
+            return True
+    if result.stdout is not None:
+        if mic in result.stdout:
+            return True
     return False
 
 
