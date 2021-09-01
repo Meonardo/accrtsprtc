@@ -38,10 +38,11 @@ async def index(request):
 
 # check start command
 async def start(request):
-    form = await request.post()
     time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds')
-    print(u"[START] {time}\n:Incoming Request: {r}, form: {f}".format(time=time_str, r=request, f=form))
+                                                                                                      timespec='milliseconds')
+    print(u"[START] {time}\n:Incoming Request: {r}".format(time=time_str, r=request))
+    form = await request.post()
+    print("form: ", form)
 
     if 'debug' in form:
         debug = form['debug']
@@ -68,6 +69,8 @@ async def start(request):
     if 'mic' not in form:
         return json_response(False, -4, "Please select a microphone device!")
     mic = form["mic"]
+    if len(str(mic)) == 0:
+        return json_response(False, -4, "Invalid microphone device!")
 
     if not check_mic(mic):
         return json_response(False, -4, "Invalid microphone device!")
@@ -142,10 +145,11 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
 
 # check stop command
 async def stop(request):
-    form = await request.post()
     time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds')
-    print(u"[START] {time}\n:Incoming Request: {r}, form: {f}".format(time=time_str, r=request, f=form))
+                                                                                                      timespec='milliseconds')
+    print(u"[START] {time}\n:Incoming Request: {r}".format(time=time_str, r=request))
+    form = await request.post()
+    print("form: ", form)
 
     if 'rtsp' not in form:
         return json_response(False, -1, "Please input RTSP stream to publish!")
