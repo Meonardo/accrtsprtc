@@ -70,8 +70,9 @@ async def start(request):
     if 'mic' not in form:
         return json_response(False, -4, "Please select a microphone device!")
     mic = form["mic"]
-    if len(str(mic)) == 0:
-        return json_response(False, -4, "Invalid microphone device!")
+    if platform.system() == "Windows":
+        if len(str(mic)) == 0:
+            return json_response(False, -4, "Invalid microphone device!")
 
     if not check_mic(mic):
         return json_response(False, -4, "Invalid microphone device!")

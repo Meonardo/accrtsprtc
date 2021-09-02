@@ -4,6 +4,8 @@ import logging
 import platform
 import random
 import string
+import time
+
 import websockets
 import json
 import attr
@@ -271,23 +273,39 @@ class WebRTCClient:
         pc = RTCPeerConnection()
         self.pc = pc
 
+        @pc.on("iceconnectionstatechange")
+        async def on_iceconnectionstatechange():
+            print("ICE connection state is %s", pc.iceConnectionState)
+            if pc.iceConnectionState == "failed":
+                await pc.close()
+                print("Republishing...")
+                time.sleep(3)
+                await self.publish()
+
+        @pc.on("connectionstatechange")
+        async def on_connectionstatechange():
+            print("Connection state is %s", pc.connectionState)
+
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
         if self.rtsp is not None:
-            # for testing switch camera
-            if platform.system() == "Darwin":
-                player = MediaPlayer(':0', format='avfoundation')
-            elif platform.system() == "Linux":
-                player = MediaPlayer("hw:2", format="alsa")
-            else:
-                if self.mic is None:
-                    self.mic = "Microphone (High Definition Audio Device)"
-                input_a = "audio={}".format(self.mic)
-                player = MediaPlayer(input_a, format="dshow")
+            if self.mic is not None and len(self.mic) > 0:
+                print("Current mic is: ", self.mic)
+                if platform.system() == "Darwin":
+                    player = MediaPlayer(':0', format='avfoundation')
+                elif platform.system() == "Linux":
+                    player = MediaPlayer("hw:2", format="alsa")
+                else:
+                    if self.mic is None:
+                        self.mic = "Microphone (High Definition Audio Device)"
+                    input_a = "audio={}".format(self.mic)
+                    player = MediaPlayer(input_a, format="dshow", options={
+                        '-loglevel', 'error', '-hide_banner'
+                    })
 
-            if player.audio is not None:
-                request["audio"] = True
-                pc.addTrack(player.audio)
+                if player.audio is not None:
+                    request["audio"] = True
+                    pc.addTrack(player.audio)
 
             rtsp_player = StreamPlayer(self.rtsp)
             video_track = FFmpegH264Track(rtsp_player)

@@ -12,7 +12,7 @@ class StreamPlayer (threading.Thread):
         # flag to indicate that the thread should stop
         self.isRunning = False
         self.rtsp = rtsp
-        self.packets = asyncio.Queue(3)
+        self.packets = asyncio.Queue(1)
         self.name = "StreamPlayer--" + rtsp
         self.loop = loop
 

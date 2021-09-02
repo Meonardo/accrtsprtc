@@ -5,3 +5,4 @@
 *.xcuserdatad
 *.pyc
 venv
+/log
