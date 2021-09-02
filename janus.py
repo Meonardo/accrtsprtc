@@ -299,9 +299,7 @@ class WebRTCClient:
                     if self.mic is None:
                         self.mic = "Microphone (High Definition Audio Device)"
                     input_a = "audio={}".format(self.mic)
-                    player = MediaPlayer(input_a, format="dshow", options={
-                        '-loglevel', 'error', '-hide_banner'
-                    })
+                    player = MediaPlayer(input_a, format="dshow")
 
                 if player.audio is not None:
                     request["audio"] = True
