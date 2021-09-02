@@ -24,6 +24,7 @@ def json_response(success, code, data):
     else:
         state = code
 
+    print("Send response: ", data)
     time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
                                                                                            timespec='milliseconds')
     print("[END] {}\n".format(time_str))
@@ -188,7 +189,7 @@ async def on_shutdown(app):
             proc.terminate()
     CAMS.clear()
     for key in LOGS.keys():
-        log_handle = CAMS[key]
+        log_handle = LOGS[key]
         if log_handle is not None:
             log_handle.close()
     LOGS.clear()
