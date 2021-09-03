@@ -275,16 +275,18 @@ class WebRTCClient:
 
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
-            print("ICE connection state is %s", pc.iceConnectionState)
+            print("ICE connection state is ", pc.iceConnectionState)
             if pc.iceConnectionState == "failed":
                 await pc.close()
                 print("Republishing...")
+                if self.stream_player is not None:
+                    self.stream_player.stop()
                 time.sleep(3)
                 await self.publish()
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
-            print("Connection state is %s", pc.connectionState)
+            print("Connection state is ", pc.connectionState)
 
         request = {"request": "configure", "audio": False, "video": True}
         # configure media

@@ -8,12 +8,21 @@ import time
 import datetime
 from pathlib import Path
 from aiohttp import web
+from threading import Thread
 
 CAMS = {}
 # debug level 0 means nothing, 1 means debug
 LOGS = {}
-DEBUG_LEVEL = 0
+DEBUG_LEVEL = 1
+STOP_FLUSH_LOG = False
 ROOT = os.path.abspath(os.path.dirname(__file__))
+
+
+def async_func(f):
+    def wrapper(*args, **kwargs):
+        thr = Thread(target = f, args = args, kwargs = kwargs)
+        thr.start()
+    return wrapper
 
 
 # common response
@@ -73,9 +82,8 @@ async def start(request):
     if platform.system() == "Windows":
         if len(str(mic)) == 0:
             return json_response(False, -4, "Invalid microphone device!")
-
-    if not check_mic(mic):
-        return json_response(False, -4, "Invalid microphone device!")
+        if not check_mic(mic):
+            return json_response(False, -4, "Invalid microphone device!")
 
     if 'janus' not in form:
         return json_response(False, -5, "Please input legal janus server address!")
@@ -131,17 +139,14 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
            '--mic', mic]
     if DEBUG_LEVEL > 0:
         cmd.append("-v")
-        time_str = str(int(time.time()))
-        log_path = os.path.join(ROOT, 'log')
-        Path(log_path).mkdir(parents=True, exist_ok=True)
-        log_file_path = os.path.join(log_path, '{id}_{t}.txt'.format(id=identify, t=time_str))
-        print("---------- Log enabed file at: ", log_file_path)
-        log = open(log_file_path, 'w')
-        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log)
+        # write to file
+        log = file_logger(identify)
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
         log_key = rtsp + '_log'
         LOGS[log_key] = log
     else:
-        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
     return p
 
 
@@ -169,19 +174,47 @@ async def stop(request):
         proc.terminate()
         CAMS.pop(rtsp, None)
         msg = rtsp + " Stopped!"
-        return json_response(True, 1, msg)
 
-    log_key = rtsp + "_log"
-    if log_key in LOGS:
-        log = LOGS[log_key]
-        if log is not None:
-            log.close()
+        log_key = rtsp + "_log"
+        if log_key in LOGS:
+            log = LOGS[log_key]
+            if log is not None:
+                log.flush()
+                log.close()
+                LOGS.pop(log_key, None)
+
+        return json_response(True, 1, msg)
 
     return json_response(False, -4, "No subproc Found!")
 
 
+@async_func
+def check_io():
+    if DEBUG_LEVEL == 0 or STOP_FLUSH_LOG:
+        return
+    while True:
+        print("Writing log to file ", )
+        time.sleep(3)
+        for key in LOGS.keys():
+            log_handle = LOGS[key]
+            if log_handle is not None:
+                log_handle.flush()
+
+
+def file_logger(identify):
+    time_str = str(int(time.time()))
+    log_path = os.path.join(ROOT, 'log')
+    Path(log_path).mkdir(parents=True, exist_ok=True)
+    log_file_path = os.path.join(log_path, '{id}_{t}.txt'.format(id=identify, t=time_str))
+    print("---------- Log enabed file at: ", log_file_path)
+    log = open(log_file_path, 'w', 1)
+    return log
+
+
 async def on_shutdown(app):
     print("Web server is shutting down...")
+    global STOP_FLUSH_LOG
+    STOP_FLUSH_LOG = True
 
     for key in CAMS.keys():
         proc = CAMS[key]
@@ -215,6 +248,9 @@ if __name__ == "__main__":
     app.router.add_get("/", index)
     app.router.add_post("/camera/push/start", start)
     app.router.add_post("/camera/push/stop", stop)
+
+    if platform.system() == "Windows":
+        check_io()
 
     try:
         print("RTSP push server started at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
