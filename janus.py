@@ -12,13 +12,26 @@ import attr
 import datetime
 
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
-from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc.contrib.media import MediaPlayer
 from collections import OrderedDict
 from h264track import FFmpegH264Track
 from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
 from typing import Optional
+
+
+old_print = print
+
+
+def timestamped_print(*args, **kwargs):
+    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(
+        sep=' ',
+        timespec='milliseconds')
+    old_print(time_str, *args, **kwargs)
+
+
+print = timestamped_print
 
 
 capabilities = RTCRtpSender.getCapabilities("video")
@@ -239,7 +252,8 @@ class WebRTCClient:
 
     async def destroy(self):
         await self.signaling.leave()
-        await self.pc.close()
+        if self.pc is not None:
+            await self.pc.close()
         if self.stream_player is not None:
             self.stream_player.stop()
 
@@ -254,6 +268,13 @@ class WebRTCClient:
                 await self.publish()
                 publishers = data.data["publishers"]
                 print("Publishes in the room: ", publishers)
+            elif events_type == "event":
+                if 'error' in data.data and 'error_code' in data.data:
+                    error = data.data['error']
+                    error_code = data.data['error_code']
+                    if error_code == 436:
+                        # User ID already exists error
+                        raise Exception(error)
 
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
@@ -294,7 +315,9 @@ class WebRTCClient:
             if self.mic is not None and len(self.mic) > 0:
                 print("Current mic is: ", self.mic)
                 if platform.system() == "Darwin":
-                    player = MediaPlayer(':0', format='avfoundation')
+                    player = MediaPlayer(':0', format='avfoundation', options={
+                        "hide_banner"
+                    })
                 elif platform.system() == "Linux":
                     player = MediaPlayer("hw:2", format="alsa")
                 else:
@@ -328,7 +351,7 @@ class WebRTCClient:
         loop.create_task(signaling.keepalive())
 
         message = {"request": "join", "ptype": "publisher", "room": int(room), "pin": str(room), "display": display,
-                       "id": int(id)}
+                   "id": int(id)}
         await signaling.sendmessage(message)
 
         assert signaling.conn
@@ -349,9 +372,7 @@ class WebRTCClient:
                 elif not isinstance(msg, Ack):
                     print(msg)
             except (KeyboardInterrupt, ConnectionClosed, ConnectionClosedError) as e:
-                time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds')
-                print("---------- {} Websocket exception: ".format(time_str), e)
+                print("---------- Websocket exception: ", e)
                 return
 
 
@@ -363,9 +384,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. ws://localhost:8188")
     parser.add_argument("--rtsp", help="RTSP stream address.")
-    parser.add_argument("--room", default="1234", help="The video room ID to join (default: 1234).",)
-    parser.add_argument("--name", default="LocalCamera", help="The name display in the room",)
-    parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)",)
+    parser.add_argument("--room", default="1234", help="The video room ID to join (default: 1234).", )
+    parser.add_argument("--name", default="LocalCamera", help="The name display in the room", )
+    parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)", )
     parser.add_argument("--mic", help="Specific a microphone device to record audio.")
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
@@ -383,8 +404,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         print("========= RTSP ", rtsp)
-        print("WebSocket server started at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds'))
+        print("WebSocket server started")
         loop.run_until_complete(
             rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
         )
@@ -392,8 +412,7 @@ if __name__ == "__main__":
         print("------------------------Exception: ", e)
     finally:
         print("========= RTSP ", rtsp)
-        print("WebSocket server stopped at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds'))
+        print("WebSocket server stopped")
         # 销毁 RTC client
         loop.run_until_complete(rtc_client.destroy())
         # 关闭 WS

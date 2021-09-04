@@ -8,21 +8,15 @@ import time
 import datetime
 from pathlib import Path
 from aiohttp import web
-from threading import Thread
+from multiprocessing.connection import Listener
+from janus import print
 
+__connection = None
 CAMS = {}
 # debug level 0 means nothing, 1 means debug
 LOGS = {}
 DEBUG_LEVEL = 1
-STOP_FLUSH_LOG = False
 ROOT = os.path.abspath(os.path.dirname(__file__))
-
-
-def async_func(f):
-    def wrapper(*args, **kwargs):
-        thr = Thread(target = f, args = args, kwargs = kwargs)
-        thr.start()
-    return wrapper
 
 
 # common response
@@ -34,9 +28,7 @@ def json_response(success, code, data):
         state = code
 
     print("Send response: ", data)
-    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds')
-    print("[END] {}\n".format(time_str))
+    print("[END] \n")
     return web.json_response({"state": state, "code": data})
 
 
@@ -48,9 +40,7 @@ async def index(request):
 
 # check start command
 async def start(request):
-    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                                      timespec='milliseconds')
-    print(u"[START] {time}\n:Incoming Request: {r}".format(time=time_str, r=request))
+    print(u"[START] :Incoming Request: {r}".format(r=request))
     form = await request.post()
     print("form: ", form)
 
@@ -139,22 +129,23 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
            '--mic', mic]
     if DEBUG_LEVEL > 0:
         cmd.append("-v")
-        # write to file
-        log = file_logger(identify)
-        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
-        log_key = rtsp + '_log'
-        LOGS[log_key] = log
+        if platform.system() == "Windows":
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, shell=True, text=True, encoding="utf-8")
+        else:
+            # write to file
+            log = file_logger(identify)
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
+            log_key = rtsp + '_log'
+            LOGS[log_key] = log
     else:
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
+
     return p
 
 
 # check stop command
 async def stop(request):
-    time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                                      timespec='milliseconds')
-    print(u"[START] {time}\n:Incoming Request: {r}".format(time=time_str, r=request))
+    print(u"[START] :Incoming Request: {r}".format(r=request))
     form = await request.post()
     print("form: ", form)
 
@@ -188,33 +179,36 @@ async def stop(request):
     return json_response(False, -4, "No subproc Found!")
 
 
-@async_func
-def check_io():
-    if DEBUG_LEVEL == 0 or STOP_FLUSH_LOG:
-        return
-    while True:
-        print("Writing log to file ", )
-        time.sleep(3)
-        for key in LOGS.keys():
-            log_handle = LOGS[key]
-            if log_handle is not None:
-                log_handle.flush()
-
-
 def file_logger(identify):
     time_str = str(int(time.time()))
     log_path = os.path.join(ROOT, 'log')
     Path(log_path).mkdir(parents=True, exist_ok=True)
     log_file_path = os.path.join(log_path, '{id}_{t}.txt'.format(id=identify, t=time_str))
-    print("---------- Log enabed file at: ", log_file_path)
+    print("---------- Log enabled file at: ", log_file_path)
     log = open(log_file_path, 'w', 1)
     return log
 
 
+def __start_internal_server():
+    print("Start internal socket server at 9009")
+    address = ('localhost', 9009)  # family is deduced to be 'AF_INET'
+    listener = Listener(address, authkey=b'hello')
+    global __connection
+    conn = listener.accept()
+    __connection = listener
+
+    while True:
+        msg = conn.recv()
+        print()
+        # do something with msg
+        if msg == 'close':
+            conn.close()
+            break
+    listener.close()
+
+
 async def on_shutdown(app):
     print("Web server is shutting down...")
-    global STOP_FLUSH_LOG
-    STOP_FLUSH_LOG = True
 
     for key in CAMS.keys():
         proc = CAMS[key]
@@ -249,12 +243,12 @@ if __name__ == "__main__":
     app.router.add_post("/camera/push/start", start)
     app.router.add_post("/camera/push/stop", stop)
 
-    if platform.system() == "Windows":
-        check_io()
+    # __start_internal_server()
 
     try:
-        print("RTSP push server started at ", datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                           timespec='milliseconds'))
+        print("RTSP push server started at ",
+              datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
+                                                                                                     timespec='milliseconds'))
         web.run_app(
             app, access_log=None, host=args.host, port=args.p
         )
