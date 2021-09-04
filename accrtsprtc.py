@@ -6,17 +6,29 @@ import subprocess
 import signal
 import time
 import datetime
+import queue
+import threading
+import asyncio
+
 from pathlib import Path
 from aiohttp import web
 from multiprocessing.connection import Listener
 from janus import print
 
-__connection = None
 CAMS = {}
 # debug level 0 means nothing, 1 means debug
-LOGS = {}
 DEBUG_LEVEL = 1
 ROOT = os.path.abspath(os.path.dirname(__file__))
+
+
+class RTSPClient:
+    def __init__(self, publisher, rtsp):
+        self.publisher = publisher
+        self.rtsp = rtsp
+        self.process = None
+        self.log_handler = None
+        self.request_session = None
+        self.queue = queue.Queue(3)
 
 
 # common response
@@ -36,6 +48,19 @@ def json_response(success, code, data):
 async def index(request):
     content = "Recording the conference!"
     return web.Response(content_type="text/html", text=content)
+
+
+async def subprocess_msg(request):
+    print(u"[START] :Incoming Internal Request: {r}".format(r=request))
+    form = await request.post()
+    print("Received message: ", form)
+    if 'rtsp' in form:
+        rtsp = form['rtsp']
+        if rtsp in CAMS:
+            client = CAMS[rtsp]
+            client.queue.put(form)
+
+    return json_response(True, 1, "")
 
 
 # check start command
@@ -89,9 +114,25 @@ async def start(request):
         print("Current RTSP stream ", rtsp, " is publishing...")
         return json_response(False, -3, "You've published the stream!")
     else:
-        proc = launch_janus(rtsp, room, display, publisher, mic, janus)
+        client = RTSPClient(publisher=publisher, rtsp=rtsp)
+        proc = launch_janus(rtsp, room, display, publisher, mic, client, janus)
+        client.process = proc
         msg = rtsp + " has been published to VideoRoom " + room
-        CAMS[rtsp] = proc
+        CAMS[rtsp] = client
+
+        while True:
+            if not client.queue.empty():
+                obj = client.queue.get()
+                event = obj['event']
+                if event == 'close':
+                    msg = str(obj['data'])
+                    break
+                if event == 'ice':
+                    data = str(obj['data'])
+                    if data == 'completed':
+                        break
+                time.sleep(1.5)
+
         return json_response(True, 1, msg)
 
 
@@ -113,7 +154,7 @@ def check_mic(mic):
     return False
 
 
-def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0.0.1:8188'):
+def launch_janus(rtsp, room, display, identify, mic, client, janus_signaling='ws://127.0.0.1:8188'):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     janus_path = dir_path + "/janus.py"
     if platform.system() == "Windows":
@@ -135,8 +176,7 @@ def launch_janus(rtsp, room, display, identify, mic, janus_signaling='ws://127.0
             # write to file
             log = file_logger(identify)
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
-            log_key = rtsp + '_log'
-            LOGS[log_key] = log
+            client.log_handler = log
     else:
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -158,21 +198,17 @@ async def stop(request):
     if rtsp not in CAMS:
         return json_response(False, -3, "No RTSP stream published!")
 
-    proc: subprocess.Popen = CAMS[rtsp]
-    if proc is not None:
+    client: RTSPClient = CAMS[rtsp]
+    if client is not None and client.process is not None:
         print("Stopping SubProcess first!")
-        os.kill(proc.pid, signal.SIGINT)
-        proc.terminate()
+        os.kill(client.process.pid, signal.SIGINT)
+        client.process.terminate()
         CAMS.pop(rtsp, None)
         msg = rtsp + " Stopped!"
 
-        log_key = rtsp + "_log"
-        if log_key in LOGS:
-            log = LOGS[log_key]
-            if log is not None:
-                log.flush()
-                log.close()
-                LOGS.pop(log_key, None)
+        if client.log_handler is not None:
+            client.log_handler.flush()
+            client.log_handler.close()
 
         return json_response(True, 1, msg)
 
@@ -191,36 +227,55 @@ def file_logger(identify):
 
 def __start_internal_server():
     print("Start internal socket server at 9009")
-    address = ('localhost', 9009)  # family is deduced to be 'AF_INET'
+    address = ('localhost', 9009)
     listener = Listener(address, authkey=b'hello')
-    global __connection
-    conn = listener.accept()
-    __connection = listener
+    thread_quit = threading.Event()
+    thread = threading.Thread(
+        name="Internal Server Thread",
+        target=__internal_server_worker,
+        args=(
+            asyncio.get_event_loop(),
+            thread_quit,
+            listener
+        ),
+    )
+    thread.start()
+    return listener
 
-    while True:
-        msg = conn.recv()
-        print()
-        # do something with msg
-        if msg == 'close':
-            conn.close()
-            break
-    listener.close()
+
+def __internal_server_worker(loop, quit_event, listener):
+    conn = listener.accept()
+    print('connection accepted from', listener.last_accepted)
+    while not quit_event.is_set():
+        try:
+            msg = conn.recv()
+            print("Received message: ", msg)
+            if 'rtsp' in msg:
+                rtsp = msg['rtsp']
+                if rtsp in CAMS:
+                    client = CAMS[rtsp]
+                    client.queue.put(msg)
+            # do something with msg
+            if msg == 'close':
+                conn.close()
+                break
+        except Exception as exc:
+            print(exc)
+            listener.close()
+            return
 
 
 async def on_shutdown(app):
     print("Web server is shutting down...")
 
     for key in CAMS.keys():
-        proc = CAMS[key]
-        if proc is not None:
-            os.kill(proc.pid, signal.SIGINT)
-            proc.terminate()
+        client = CAMS[key]
+        if client.process is not None:
+            os.kill(client.process.pid, signal.SIGINT)
+            client.process.terminate()
+        if client.log_handler is not None:
+            client.log_handler.close()
     CAMS.clear()
-    for key in LOGS.keys():
-        log_handle = LOGS[key]
-        if log_handle is not None:
-            log_handle.close()
-    LOGS.clear()
 
 
 if __name__ == "__main__":
@@ -242,15 +297,12 @@ if __name__ == "__main__":
     app.router.add_get("/", index)
     app.router.add_post("/camera/push/start", start)
     app.router.add_post("/camera/push/stop", stop)
-
-    # __start_internal_server()
+    app.router.add_post("/camera/subprocess", subprocess_msg)
 
     try:
-        print("RTSP push server started at ",
-              datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(sep=' ',
-                                                                                                     timespec='milliseconds'))
+        print("RTSP push server started")
         web.run_app(
-            app, access_log=None, host=args.host, port=args.p
+            app, access_log=None, host=args.host, port=args.p, handle_signals=True
         )
     except KeyboardInterrupt:
         pass

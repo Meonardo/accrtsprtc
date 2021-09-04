@@ -5,11 +5,11 @@ import platform
 import random
 import string
 import time
-
 import websockets
 import json
 import attr
 import datetime
+import aiohttp
 
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from aiortc.contrib.media import MediaPlayer
@@ -19,6 +19,7 @@ from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
 from typing import Optional
+from multiprocessing.connection import Client
 
 
 old_print = print
@@ -243,14 +244,17 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, signaling: JanusGateway, rtsp, mic):
+    def __init__(self, signaling: JanusGateway, rtsp, mic, http_session, publisher):
         self.signaling = signaling
         self.rtsp = rtsp
         self.mic = mic
+        self.publisher = publisher
         self.pc: Optional[RTCPeerConnection] = None
         self.stream_player: Optional[StreamPlayer] = None
+        self.http_session = http_session
 
     async def destroy(self):
+        await self.http_session.close()
         await self.signaling.leave()
         if self.pc is not None:
             await self.pc.close()
@@ -290,13 +294,21 @@ class WebRTCClient:
                 if t.kind == "video":
                     t.setCodecPreferences(preferences)
 
+    async def __send_msg(self, type, data):
+        msg = {'event': type, 'data': data, 'rtsp': self.rtsp, 'publisher': self.publisher}
+        async with self.http_session.post('http://192.168.5.36:9001/camera/subprocess', data=msg) as response:
+            return await response.json()
+
     async def publish(self):
         pc = RTCPeerConnection()
         self.pc = pc
 
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
-            print("ICE connection state is ", pc.iceConnectionState)
+            print("ICE connection state is", pc.iceConnectionState)
+            if pc.iceConnectionState == "completed":
+                await self.__send_msg(type='ice', data=pc.iceConnectionState)
+
             if pc.iceConnectionState == "failed":
                 await pc.close()
                 print("Republishing...")
@@ -307,7 +319,7 @@ class WebRTCClient:
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
-            print("Connection state is ", pc.connectionState)
+            print("Connection state is", pc.connectionState)
 
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
@@ -316,7 +328,6 @@ class WebRTCClient:
                 print("Current mic is: ", self.mic)
                 if platform.system() == "Darwin":
                     player = MediaPlayer(':0', format='avfoundation', options={
-                        "hide_banner"
                     })
                 elif platform.system() == "Linux":
                     player = MediaPlayer("hw:2", format="alsa")
@@ -343,7 +354,7 @@ class WebRTCClient:
         sdp = {"sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type}
         await self.signaling.sendmessage(request, sdp)
 
-    async def loop(self, signaling, room, display, id):
+    async def loop(self, signaling, room, display):
         await signaling.connect()
         await signaling.attach("janus.plugin.videoroom")
 
@@ -351,7 +362,7 @@ class WebRTCClient:
         loop.create_task(signaling.keepalive())
 
         message = {"request": "join", "ptype": "publisher", "room": int(room), "pin": str(room), "display": display,
-                   "id": int(id)}
+                   "id": int(self.publisher)}
         await signaling.sendmessage(message)
 
         assert signaling.conn
@@ -399,17 +410,19 @@ if __name__ == "__main__":
     # create signaling client
     signaling = JanusGateway(args.url)
     # create webrtc client
-    rtc_client = WebRTCClient(signaling, rtsp, args.mic)
+    rtc_client = WebRTCClient(signaling, rtsp, args.mic, aiohttp.ClientSession(), args.id)
 
     loop = asyncio.get_event_loop()
     try:
         print("========= RTSP ", rtsp)
         print("WebSocket server started")
         loop.run_until_complete(
-            rtc_client.loop(signaling=signaling, room=args.room, display=args.name, id=args.id)
+            rtc_client.loop(signaling=signaling, room=args.room, display=args.name)
         )
     except Exception as e:
         print("------------------------Exception: ", e)
+        event = {'event': "close", 'type': "exception", 'data': e.args[0], 'rtsp': rtsp, 'publisher': args.id}
+        conn.post('http://127.0.0.1:9001/camera/subprocess', data=event)
     finally:
         print("========= RTSP ", rtsp)
         print("WebSocket server stopped")
