@@ -294,11 +294,6 @@ class WebRTCClient:
                 if t.kind == "video":
                     t.setCodecPreferences(preferences)
 
-    async def __send_msg(self, type, data):
-        msg = {'event': type, 'data': data, 'rtsp': self.rtsp, 'publisher': self.publisher}
-        async with self.http_session.post('http://192.168.5.36:9001/camera/subprocess', data=msg) as response:
-            return await response.json()
-
     async def publish(self):
         pc = RTCPeerConnection()
         self.pc = pc
@@ -307,7 +302,7 @@ class WebRTCClient:
         async def on_iceconnectionstatechange():
             print("ICE connection state is", pc.iceConnectionState)
             if pc.iceConnectionState == "completed":
-                await self.__send_msg(type='ice', data=pc.iceConnectionState)
+                await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.rtsp, self.publisher)
 
             if pc.iceConnectionState == "failed":
                 await pc.close()
@@ -391,6 +386,12 @@ def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
 
+async def send_msg(session, type, data, rtsp, publisher):
+    msg = {'event': type, 'data': data, 'rtsp': rtsp, 'publisher': publisher}
+    async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
+        return await response.json()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Janus")
     parser.add_argument("url", help="Janus root URL, e.g. ws://localhost:8188")
@@ -410,7 +411,8 @@ if __name__ == "__main__":
     # create signaling client
     signaling = JanusGateway(args.url)
     # create webrtc client
-    rtc_client = WebRTCClient(signaling, rtsp, args.mic, aiohttp.ClientSession(), args.id)
+    conn = aiohttp.ClientSession()
+    rtc_client = WebRTCClient(signaling, rtsp, args.mic, conn, args.id)
 
     loop = asyncio.get_event_loop()
     try:
@@ -421,8 +423,7 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print("------------------------Exception: ", e)
-        event = {'event': "close", 'type': "exception", 'data': e.args[0], 'rtsp': rtsp, 'publisher': args.id}
-        conn.post('http://127.0.0.1:9001/camera/subprocess', data=event)
+        loop.run_until_complete(send_msg(conn, 'exception', e.args[0], rtsp, args.id))
     finally:
         print("========= RTSP ", rtsp)
         print("WebSocket server stopped")
