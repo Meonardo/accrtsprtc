@@ -203,19 +203,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         cmd = [python, janus_path, janus_signaling, '--rtsp', rtsp, '--name', display, '--room', room, '--id', identify, '--mic', mic]
         if self.debug_log_level > 0:
             cmd.append("-v")
-            if platform.system() == "Windows":
-                p = subprocess.Popen(cmd, stdin=subprocess.PIPE, shell=True, text=True, encoding="utf-8")
-            else:
-                # write to file
-                log = self.file_logger(identify)
-                p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
-                client.log_handler = log
+            log = self.file_logger(identify)
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log, bufsize=1,
+                                 universal_newlines=True, encoding="utf-8")
+            client.log_handler = log
         else:
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         return p
 
-    # check start command 
+    # check start command
     def check_start(self, form):
         self.debug_log_level = 0
         if 'debug' in form:
