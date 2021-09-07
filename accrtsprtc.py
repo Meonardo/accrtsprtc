@@ -77,7 +77,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         path, _, query_string = self.path.partition('?')
         query_components = dict(qc.split("=") for qc in query_string.split("&"))
 
-        print(u"[START]: Received GET for %s with query: %s" % (path, query_components))
+        print(u"[START]\n"
+              u"Received GET for %s with query: %s" % (path, query_components))
 
         try:
             if path == ROUTE_INDEX:
@@ -91,7 +92,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         except HTTPStatusError as err:
             self.send_error(err.code, err.message)
 
-        print("[END]")
+        print("[END]\n")
 
         return
 
@@ -99,7 +100,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path, _, _ = self.path.partition('?')
 
-        print(u"[START]: Received POST for %s" % path)
+        print(u"[START]\n"
+              u"Received POST for %s" % path)
 
         try:
             fs = cgi.FieldStorage(
@@ -128,7 +130,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         except HTTPStatusError as err:
             self.send_error(err.code, err.message)
 
-        print("[END]")
+        print("[END]\n")
 
         return
 
@@ -262,8 +264,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             client = RTSPClient(publisher=publisher, rtsp=rtsp)
             proc = self.launch_janus(rtsp, room, display, publisher, mic, client, janus)
             client.process = proc
-            msg = rtsp + " has been published to VideoRoom " + room
-            self.clients[rtsp] = client
+            msg = publisher + " has been published to VideoRoom " + room
+            self.clients[publisher] = client
 
             # Set a timeout 20s
             timeout = time.time() + 20
@@ -282,27 +284,30 @@ class RequestHandler(BaseHTTPRequestHandler):
                         data = str(obj['data'])
                         if data == 'completed':
                             break
+                    elif event == 'exception':
+                        msg = str(obj['data'])
+                        return self.json_response(False, -7, msg)
 
             return self.json_response(True, 1, msg)
 
     # Check stop command
     def check_stop(self, form):
-        if 'rtsp' not in form:
-            return self.json_response(False, -1, "Please input RTSP stream to publish!")
-        rtsp = form["rtsp"]
-        if len(rtsp) == 0:
-            return self.json_response(False, -2, "Please input correct RTSP address!")
+        if 'id' not in form:
+            return self.json_response(False, -1, "Please input correct Publisher ID!")
+        publisher = str(form["id"])
+        if len(publisher) == 0:
+            return self.json_response(False, -2, "Please input correct Publisher ID!")
 
-        if rtsp not in self.clients:
-            return self.json_response(False, -3, "No RTSP stream published!")
+        if publisher not in self.clients:
+            return self.json_response(False, -3, "No publisher {} currently publishing!".format(publisher))
 
-        client: RTSPClient = self.clients[rtsp]
+        client: RTSPClient = self.clients[publisher]
         if client is not None and client.process is not None:
-            print("Stopping SubProcess first!")
+            print("Stopping Subprocess first!")
             os.kill(client.process.pid, signal.SIGINT)
             client.process.terminate()
-            self.clients.pop(rtsp, None)
-            msg = rtsp + " Stopped!"
+            self.clients.pop(publisher, None)
+            msg = "Publisher ID: " + publisher + " Stopped!"
 
             if client.log_handler is not None:
                 client.log_handler.flush()
@@ -310,15 +315,15 @@ class RequestHandler(BaseHTTPRequestHandler):
 
             return self.json_response(True, 1, msg)
 
-        return self.json_response(False, -4, "No subproc Found!")
+        return self.json_response(False, -4, "No subprocess Found!")
 
     # Interact with subprocess
     def subprocess_msg(self, form):
         print("Received message: ", form)
-        if 'rtsp' in form:
-            rtsp = form['rtsp']
-            if rtsp in self.clients:
-                client = self.clients[rtsp]
+        if 'id' in form:
+            publisher = str(form['id'])
+            if publisher in self.clients:
+                client = self.clients[publisher]
                 client.queue.put(form)
 
         return self.json_response(True, 1, "")

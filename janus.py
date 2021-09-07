@@ -19,7 +19,6 @@ from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
 from typing import Optional
-from multiprocessing.connection import Client
 
 
 old_print = print
@@ -302,7 +301,7 @@ class WebRTCClient:
         async def on_iceconnectionstatechange():
             print("ICE connection state is", pc.iceConnectionState)
             if pc.iceConnectionState == "completed":
-                await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.rtsp, self.publisher)
+                await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.publisher)
 
             if pc.iceConnectionState == "failed":
                 await pc.close()
@@ -386,8 +385,8 @@ def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
 
-async def send_msg(session, type, data, rtsp, publisher):
-    msg = {'event': type, 'data': data, 'rtsp': rtsp, 'publisher': publisher}
+async def send_msg(session, type, data, publisher):
+    msg = {'event': type, 'data': data, 'id': publisher}
     async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
         return await response.json()
 
@@ -423,7 +422,7 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print("------------------------Exception: ", e)
-        loop.run_until_complete(send_msg(conn, 'exception', e.args[0], rtsp, args.id))
+        loop.run_until_complete(send_msg(conn, 'exception', e.args[0], args.id))
     finally:
         print("========= RTSP ", rtsp)
         print("WebSocket server stopped")
