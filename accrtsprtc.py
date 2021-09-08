@@ -140,9 +140,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         for key in self.clients.keys():
             client = self.clients[key]
-            if client.process is not None:
-                os.kill(client.process.pid, signal.SIGINT)
-                client.process.terminate()
+            self.kill_subprocess(client)
             if client.log_handler is not None:
                 client.log_handler.close()
         self.clients.clear()
@@ -302,10 +300,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.json_response(False, -3, "No publisher {} currently publishing!".format(publisher))
 
         client: RTSPClient = self.clients[publisher]
-        if client is not None and client.process is not None:
+        if client is not None:
             print("Stopping Subprocess first!")
-            os.kill(client.process.pid, signal.SIGINT)
-            client.process.terminate()
+            self.kill_subprocess(client)
             self.clients.pop(publisher, None)
             msg = "Publisher ID: " + publisher + " Stopped!"
 
@@ -317,6 +314,16 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         return self.json_response(False, -4, "No subprocess Found!")
 
+    @staticmethod
+    def kill_subprocess(client: RTSPClient):
+        if client.process is None:
+            return
+        try:
+            os.kill(client.process.pid, signal.SIGINT)
+            client.process.terminate()
+        except Exception as e:
+            print("Kill subprocess exception: ", e)
+
     # Interact with subprocess
     def subprocess_msg(self, form):
         print("Received message: ", form)
@@ -325,6 +332,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             if publisher in self.clients:
                 client = self.clients[publisher]
                 client.queue.put(form)
+                event = form['event']
+                if event == 'exception':
+                    self.kill_subprocess(client)
 
         return self.json_response(True, 1, "")
 
