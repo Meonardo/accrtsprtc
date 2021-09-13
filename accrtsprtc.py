@@ -202,7 +202,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             python = "python3"
         cmd = [python, janus_path, janus_signaling, '--rtsp', rtsp, '--name', display, '--room', room, '--id', identify, '--mic', mic]
         if self.debug_log_level > 0:
-            cmd.append("-v")
+            cmd.extend(['-L', str(self.debug_log_level)])
             log = self.file_logger(identify)
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log, bufsize=1,
                                  universal_newlines=True, encoding="utf-8")

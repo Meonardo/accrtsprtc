@@ -399,13 +399,20 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="LocalCamera", help="The name display in the room", )
     parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)", )
     parser.add_argument("--mic", help="Specific a microphone device to record audio.")
-    parser.add_argument("--verbose", "-v", action="count")
+    parser.add_argument("--log_level", "-L", default=0, help="Log level")
     args = parser.parse_args()
     print("Received Params:", args)
 
-    if args.verbose:
-        logging.basicConfig(level=logging.INFO)
-
+    if args.log_level:
+        log_level = int(args.log_level)
+        if log_level == 1:
+            logging.basicConfig(level=logging.WARN)
+        elif log_level == 2:
+            logging.basicConfig(level=logging.INFO)
+        elif log_level == 3:
+            logging.basicConfig(level=logging.DEBUG)
+        else:
+            logging.basicConfig(level=logging.ERROR)
     rtsp = args.rtsp
     # create signaling client
     signaling = JanusGateway(args.url)
