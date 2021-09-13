@@ -4,6 +4,7 @@ import fractions
 import logging
 import threading
 import time
+import datetime
 from typing import Dict, Optional, Set
 
 import av
@@ -103,6 +104,10 @@ def player_worker(
         try:
             frame = next(container.decode(*streams))
         except (av.AVError, StopIteration) as exc:
+            time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(
+                sep=' ',
+                timespec='milliseconds')
+            print("{r} Audio exception: {o}".format(r=time_str, o=exc))
             if isinstance(exc, av.FFmpegError) and exc.errno == errno.EAGAIN:
                 time.sleep(0.01)
                 continue

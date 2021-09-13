@@ -4,6 +4,7 @@ import threading
 import asyncio
 import errno
 import time
+import datetime
 
 
 class StreamPlayer (threading.Thread):
@@ -12,7 +13,7 @@ class StreamPlayer (threading.Thread):
         # flag to indicate that the thread should stop
         self.isRunning = False
         self.rtsp = rtsp
-        self.packets = asyncio.Queue(1)
+        self.packets = asyncio.Queue(30)
         self.name = "StreamPlayer--" + rtsp
         self.loop = loop
 
@@ -35,6 +36,10 @@ class StreamPlayer (threading.Thread):
                 packet = next(self.container.demux(video_stream))
                 # print(self.debug_desc + " Original Decoded Frame: ", frame)
             except (av.AVError, BlockingIOError, StopIteration) as exc:
+                time_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(0))).astimezone().isoformat(
+                    sep=' ',
+                    timespec='milliseconds')
+                print("{r} Video exception: {o}".format(r=time_str, o=exc))
                 if isinstance(exc, av.FFmpegError) and exc.errno == errno.EAGAIN:
                     time.sleep(0.01)
                     continue
