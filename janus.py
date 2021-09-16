@@ -318,7 +318,7 @@ class WebRTCClient:
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
         if self.rtsp is not None:
-            if self.mic is not None and len(self.mic) > 0:
+            if self.mic is not 'mute':
                 print("Current mic is: ", self.mic)
                 if platform.system() == "Darwin":
                     player = MediaPlayer(':0', format='avfoundation', options={

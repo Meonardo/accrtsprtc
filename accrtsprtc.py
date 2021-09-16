@@ -236,14 +236,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.json_response(False, -3, "Please input publisher display name in Janus room!")
         display = form["display"]
 
-        if 'mic' not in form:
-            return self.json_response(False, -4, "Please select a microphone device!")
-        mic = form["mic"]
-        if platform.system() == "Windows":
-            if len(str(mic)) == 0:
-                return self.json_response(False, -4, "Invalid microphone device!")
-            if not self.check_mic(mic):
-                return self.json_response(False, -4, "Invalid microphone device!")
+        mic = 'mute'
+        if 'mic' in form:
+            mic = form["mic"]
+            if platform.system() == "Windows":
+                if len(str(mic)) == 0:
+                    mic = "mute"
+                if str(mic) is not 'mute':
+                    if not self.check_mic(mic):
+                        return self.json_response(False, -4, "Invalid microphone device!")
 
         if 'janus' not in form:
             return self.json_response(False, -5, "Please input legal janus server address!")
