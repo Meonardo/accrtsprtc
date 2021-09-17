@@ -242,7 +242,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if platform.system() == "Windows":
                 if len(str(mic)) == 0:
                     mic = "mute"
-                if str(mic) is not 'mute':
+                if str(mic) != 'mute':
                     if not self.check_mic(mic):
                         return self.json_response(False, -4, "Invalid microphone device!")
 
