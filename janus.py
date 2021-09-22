@@ -334,12 +334,17 @@ class WebRTCClient:
                 if player.audio is not None:
                     request["audio"] = True
                     pc.addTrack(player.audio)
-
-            rtsp_player = StreamPlayer(self.rtsp)
-            video_track = FFmpegH264Track(rtsp_player)
-            # self.camera = GstH264Player(video_track, self.rtsp)
-            pc.addTrack(video_track)
-            self.stream_player = rtsp_player
+            if self.rtsp == 'screen':
+                player = MediaPlayer('video=screen-capture-recorder', format="dshow", options={
+                    '-framerate': '30', '-b:v': '4M', '-video_size': '1920x1080'
+                })
+                pc.addTrack(player.video)
+            else:
+                rtsp_player = StreamPlayer(self.rtsp)
+                video_track = FFmpegH264Track(rtsp_player)
+                # self.camera = GstH264Player(video_track, self.rtsp)
+                pc.addTrack(video_track)
+                self.stream_player = rtsp_player
         else:
             raise Exception("No Media Input! Stop Now.")
 
