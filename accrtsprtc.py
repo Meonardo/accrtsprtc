@@ -267,7 +267,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.clients[publisher] = client
 
             # Set a timeout 20s
-            timeout = time.time() + 20
+            timeout = time.time() + 40
             while True:
                 if time.time() > timeout:
                     return self.json_response(False, -9, 'Request subprocess timeout...')
@@ -279,9 +279,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                     if event == 'close':
                         msg = str(obj['data'])
                         break
-                    if event == 'ice':
+                    if event == 'webrtc':
                         data = str(obj['data'])
-                        if data == 'completed':
+                        if data == 'up':
                             break
                     elif event == 'exception':
                         msg = str(obj['data'])

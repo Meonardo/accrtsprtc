@@ -278,6 +278,11 @@ class WebRTCClient:
                     if error_code == 436:
                         # User ID already exists error
                         raise Exception(error)
+                if 'leaving' in data.data and 'reason' in data.data:
+                    leaving = data.data['error']
+                    reason = data.data['reason']
+                    if leaving == 'ok' and reason == 'kicked':
+                        raise Exception('You have been kicked by someone else!')
 
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
@@ -300,9 +305,6 @@ class WebRTCClient:
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
             print("ICE connection state is", pc.iceConnectionState)
-            if pc.iceConnectionState == "completed":
-                await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.publisher)
-
             if pc.iceConnectionState == "failed":
                 await pc.close()
                 print("Republishing...")
@@ -322,6 +324,7 @@ class WebRTCClient:
                 print("Current mic is: ", self.mic)
                 if platform.system() == "Darwin":
                     player = MediaPlayer(':0', format='avfoundation', options={
+                        '-rtbufsize': "512M"
                     })
                 elif platform.system() == "Linux":
                     player = MediaPlayer("hw:2", format="alsa")
@@ -329,7 +332,9 @@ class WebRTCClient:
                     if self.mic is None:
                         self.mic = "Microphone (High Definition Audio Device)"
                     input_a = "audio={}".format(self.mic)
-                    player = MediaPlayer(input_a, format="dshow")
+                    player = MediaPlayer(input_a, format="dshow", options={
+                        '-rtbufsize': "512M"
+                    })
 
                 if player.audio is not None:
                     request["audio"] = True
@@ -374,6 +379,7 @@ class WebRTCClient:
                 elif isinstance(msg, Media):
                     print(msg)
                 elif isinstance(msg, WebrtcUp):
+                    await send_msg(self.http_session, 'webrtc', 'up', self.publisher)
                     print(msg)
                 elif isinstance(msg, SlowLink):
                     print(msg)
