@@ -272,17 +272,18 @@ class WebRTCClient:
                 publishers = data.data["publishers"]
                 print("Publishes in the room: ", publishers)
             elif events_type == "event":
+                obj = json.dumps(data.data, indent=4)
+                msg = obj.encode(encoding='utf_8')
                 if 'error' in data.data and 'error_code' in data.data:
-                    error = data.data['error']
                     error_code = data.data['error_code']
                     if error_code == 436:
                         # User ID already exists error
-                        raise Exception(error)
+                        raise Exception(msg)
                 if 'leaving' in data.data and 'reason' in data.data:
                     leaving = data.data['error']
                     reason = data.data['reason']
                     if leaving == 'ok' and reason == 'kicked':
-                        raise Exception('You have been kicked by someone else!')
+                        raise Exception(msg)
 
     async def handle_sdp(self, msg):
         if 'sdp' in msg:
@@ -440,7 +441,8 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print("------------------------Exception: ", e)
-        loop.run_until_complete(send_msg(conn, 'exception', e.args[0], args.id))
+        content = e.args[0]
+        loop.run_until_complete(send_msg(conn, 'exception', content, args.id))
     finally:
         print("========= RTSP ", rtsp)
         print("WebSocket server stopped")
