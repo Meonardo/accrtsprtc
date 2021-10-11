@@ -184,7 +184,7 @@ class JanusGateway:
             try:
                 if self.conn.closed:
                     return
-                await asyncio.sleep(30)
+                await asyncio.sleep(60)
                 transaction = transaction_id()
                 await self.conn.send(json.dumps({
                     "janus": "keepalive",
@@ -251,6 +251,10 @@ class WebRTCClient:
         self.pc: Optional[RTCPeerConnection] = None
         self.stream_player: Optional[StreamPlayer] = None
         self.http_session = http_session
+        self.turn = None
+        self.turn_user = None
+        self.turn_passwd = None
+        self.stun = None
 
     async def destroy(self):
         await self.http_session.close()
@@ -275,10 +279,7 @@ class WebRTCClient:
                 obj = json.dumps(data.data, indent=4)
                 msg = obj.encode(encoding='utf_8')
                 if 'error' in data.data and 'error_code' in data.data:
-                    error_code = data.data['error_code']
-                    if error_code == 436:
-                        # User ID already exists error
-                        raise Exception(msg)
+                    raise Exception(msg)
                 if 'leaving' in data.data and 'reason' in data.data:
                     leaving = data.data['error']
                     reason = data.data['reason']
@@ -300,27 +301,32 @@ class WebRTCClient:
                     t.setCodecPreferences(preferences)
 
     async def publish(self):
-        configuration = RTCConfiguration([
-            # RTCIceServer("stun:192.168.5.12:3478"),
-            RTCIceServer("turn:192.168.5.233:3478", "root", "123456"),
-        ])
-        pc = RTCPeerConnection(configuration=configuration)
+        ice_configs = []
+        if self.turn is not None and \
+                self.turn_user is not None \
+                and self.turn_passwd is not None:
+            ice_configs.append(RTCIceServer(self.turn, self.turn_user, self.turn_passwd))
+        if self.stun is not None and self.stun != 'stun':
+            ice_configs.append(RTCIceServer(self.stun))
+
+        if len(ice_configs) > 0:
+            pc = RTCPeerConnection(configuration=RTCConfiguration(ice_configs))
+        else:
+            pc = RTCPeerConnection()
         self.pc = pc
 
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
             print("ICE connection state is", pc.iceConnectionState)
-            if pc.iceConnectionState == "failed":
-                await pc.close()
-                print("Republishing...")
-                if self.stream_player is not None:
-                    self.stream_player.stop()
-                time.sleep(3)
-                await self.publish()
+            await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.publisher)
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             print("Connection state is", pc.connectionState)
+            await send_msg(self.http_session, 'pc', pc.connectionState, self.publisher)
+
+            if pc.connectionState == "failed":
+                await self.republish(pc)
 
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
@@ -360,8 +366,21 @@ class WebRTCClient:
 
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
-        sdp = {"sdp": pc.localDescription.sdp, "trickle": True, "type": pc.localDescription.type}
+
+        if len(ice_configs) > 0:
+            sdp = {"sdp": pc.localDescription.sdp, "trickle": True, "type": pc.localDescription.type}
+        else:
+            sdp = {"sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type}
+
         await self.signaling.sendmessage(request, sdp)
+
+    async def republish(self, pc):
+        await pc.close()
+        print("Republishing...")
+        if self.stream_player is not None:
+            self.stream_player.stop()
+        time.sleep(3)
+        await self.publish()
 
     async def loop(self, signaling, room, display):
         await signaling.connect()
@@ -415,6 +434,10 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="LocalCamera", help="The name display in the room", )
     parser.add_argument("--id", help="The ID of the camera in the videoroom(publishId)", )
     parser.add_argument("--mic", help="Specific a microphone device to record audio.")
+    parser.add_argument("--turn", help="WebRTC turn server")
+    parser.add_argument("--turn_user", help="WebRTC turn server username")
+    parser.add_argument("--turn_passwd", help="WebRTC turn server passwd")
+    parser.add_argument("--stun", help="WebRTC stun server")
     parser.add_argument("--log_level", "-L", default=0, help="Log level")
     args = parser.parse_args()
     print("Received Params:", args)
@@ -435,6 +458,10 @@ if __name__ == "__main__":
     # create webrtc client
     conn = aiohttp.ClientSession()
     rtc_client = WebRTCClient(signaling, rtsp, args.mic, conn, args.id)
+    rtc_client.stun = args.stun
+    rtc_client.turn_user = args.turn_user
+    rtc_client.turn_passwd = args.turn_passwd
+    rtc_client.stun = args.stun
 
     loop = asyncio.get_event_loop()
     try:

@@ -36,12 +36,22 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 class RTSPClient:
-    def __init__(self, publisher, rtsp):
+    def __init__(self, room, publisher, rtsp, display, mic):
+        self.room = room
         self.publisher = publisher
         self.rtsp = rtsp
+        self.display = display
         self.process = None
         self.log_handler = None
         self.request_session = None
+        self.mic = mic
+
+        self.turn = None
+        self.turn_user = "root"
+        self.turn_passwd = "123456"
+
+        self.stun = 'stun'
+
         self.queue = queue.Queue(3)
 
 
@@ -193,17 +203,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         log = open(log_file_path, 'w', 1)
         return log
 
-    def launch_janus(self, rtsp, room, display, identify, mic, client, janus_signaling='ws://127.0.0.1:8188'):
+    def launch_janus(self, client, janus_signaling='ws://127.0.0.1:8188'):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         if platform.system() == "Windows":
             python = "python"
         else:
             python = "python3"
-        cmd = [python, janus_path, janus_signaling, '--rtsp', rtsp, '--name', display, '--room', room, '--id', identify, '--mic', mic]
+        cmd = [python, janus_path, janus_signaling, '--rtsp', client.rtsp, '--name', client.display, '--room',
+               client.room, '--id', client.publisher, '--mic', client.mic]
+
+        if client.turn is not None and client.turn_user is not None and client.turn_passwd is not None:
+            cmd.extend(['--turn', client.turn, '--turn_user', client.turn_user, '--turn_passwd', client.turn_passwd,
+                        '--stun', client.stun])
+
         if self.debug_log_level > 0:
             cmd.extend(['-L', str(self.debug_log_level)])
-            log = self.file_logger(identify)
+            log = self.file_logger(client.publisher)
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log, bufsize=1,
                                  universal_newlines=True, encoding="utf-8")
             client.log_handler = log
@@ -246,6 +262,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                     if not self.check_mic(mic):
                         return self.json_response(False, -4, "Invalid microphone device!")
 
+        turn_server = None
+        turn_passwd = None
+        turn_user = None
+        stun_server = None
+        if 'turn_server' in form and 'turn_passwd' in form and 'turn_user' in form:
+            turn_server = str(form['turn_server'])
+            turn_passwd = str(form['turn_passwd'])
+            turn_user = str(form['turn_user'])
+            if not turn_server.startswith('turn'):
+                return self.json_response(False, -4, "Invalid TURN server address!")
+        if 'stun_server' in form:
+            if not turn_server.startswith('stun'):
+                return self.json_response(False, -4, "Invalid STUN server address!")
+
         if 'janus' not in form:
             return self.json_response(False, -5, "Please input legal janus server address!")
         janus = form["janus"]
@@ -260,8 +290,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             print("Current RTSP stream ", rtsp, " is publishing...")
             return self.json_response(False, -3, "You've published the stream!")
         else:
-            client = RTSPClient(publisher=publisher, rtsp=rtsp)
-            proc = self.launch_janus(rtsp, room, display, publisher, mic, client, janus)
+            client = RTSPClient(publisher=publisher, rtsp=rtsp, mic=mic, display=display, room=room)
+            client.turn_server = turn_server
+            client.turn_user = turn_user
+            client.turn_passwd = turn_passwd
+            client.stun_server = stun_server
+
+            proc = self.launch_janus(client, janus)
             client.process = proc
             msg = publisher + " has been published to VideoRoom " + room
             self.clients[publisher] = client
