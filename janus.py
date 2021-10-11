@@ -15,7 +15,7 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from aiortc.contrib.media import MediaPlayer
 from collections import OrderedDict
 from h264track import FFmpegH264Track
-from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
+from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription, RTCConfiguration, RTCIceServer
 from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
 from typing import Optional
@@ -300,7 +300,11 @@ class WebRTCClient:
                     t.setCodecPreferences(preferences)
 
     async def publish(self):
-        pc = RTCPeerConnection()
+        configuration = RTCConfiguration([
+            # RTCIceServer("stun:192.168.5.12:3478"),
+            RTCIceServer("turn:192.168.5.233:3478", "root", "123456"),
+        ])
+        pc = RTCPeerConnection(configuration=configuration)
         self.pc = pc
 
         @pc.on("iceconnectionstatechange")
@@ -356,7 +360,7 @@ class WebRTCClient:
 
         # send offer
         await pc.setLocalDescription(await pc.createOffer())
-        sdp = {"sdp": pc.localDescription.sdp, "trickle": False, "type": pc.localDescription.type}
+        sdp = {"sdp": pc.localDescription.sdp, "trickle": True, "type": pc.localDescription.type}
         await self.signaling.sendmessage(request, sdp)
 
     async def loop(self, signaling, room, display):
