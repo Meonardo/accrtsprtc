@@ -306,8 +306,17 @@ class WebRTCClient:
                 self.turn_user is not None \
                 and self.turn_passwd is not None:
             ice_configs.append(RTCIceServer(self.turn, self.turn_user, self.turn_passwd))
+
         if self.stun is not None and self.stun != 'stun':
             ice_configs.append(RTCIceServer(self.stun))
+        else:
+            ice_configs.extend([
+                RTCIceServer("stun:stun.l.google.com:19302"),
+                RTCIceServer("stun:stun1.l.google.com:19302"),
+                RTCIceServer("stun:stun2.l.google.com:19302"),
+                RTCIceServer("stun:stun3.l.google.com:19302"),
+                RTCIceServer("stun:stun4.l.google.com:19302")
+            ])
 
         if len(ice_configs) > 0:
             pc = RTCPeerConnection(configuration=RTCConfiguration(ice_configs))
