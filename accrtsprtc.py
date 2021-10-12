@@ -270,10 +270,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             turn_server = str(form['turn_server'])
             turn_passwd = str(form['turn_passwd'])
             turn_user = str(form['turn_user'])
-            if not turn_server.startswith('turn'):
+            if len(turn_server) > 0 and not turn_server.startswith('turn'):
                 return self.json_response(False, -4, "Invalid TURN server address!")
         if 'stun_server' in form:
-            if not turn_server.startswith('stun'):
+            stun_server = str(form['stun_server'])
+            if len(stun_server) > 0 and not stun_server.startswith('stun'):
                 return self.json_response(False, -4, "Invalid STUN server address!")
 
         if 'janus' not in form:
@@ -292,7 +293,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             client = RTSPClient(publisher=publisher, rtsp=rtsp, mic=mic, display=display, room=room)
             if turn_passwd and turn_user and turn_server:
-                client.turn_server = turn_server
+                client.turn = turn_server
                 client.turn_user = turn_user
                 client.turn_passwd = turn_passwd
             if stun_server:
