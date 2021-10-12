@@ -458,7 +458,7 @@ if __name__ == "__main__":
     # create webrtc client
     conn = aiohttp.ClientSession()
     rtc_client = WebRTCClient(signaling, rtsp, args.mic, conn, args.id)
-    rtc_client.stun = args.stun
+    rtc_client.turn = args.turn
     rtc_client.turn_user = args.turn_user
     rtc_client.turn_passwd = args.turn_passwd
     rtc_client.stun = args.stun

@@ -46,7 +46,7 @@ class RTSPClient:
         self.request_session = None
         self.mic = mic
 
-        self.turn = None
+        self.turn = "turn:192.168.5.233:3478"
         self.turn_user = "root"
         self.turn_passwd = "123456"
 
@@ -291,10 +291,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.json_response(False, -3, "You've published the stream!")
         else:
             client = RTSPClient(publisher=publisher, rtsp=rtsp, mic=mic, display=display, room=room)
-            client.turn_server = turn_server
-            client.turn_user = turn_user
-            client.turn_passwd = turn_passwd
-            client.stun_server = stun_server
+            if turn_passwd and turn_user and turn_server:
+                client.turn_server = turn_server
+                client.turn_user = turn_user
+                client.turn_passwd = turn_passwd
+            if stun_server:
+                client.stun_server = stun_server
 
             proc = self.launch_janus(client, janus)
             client.process = proc
