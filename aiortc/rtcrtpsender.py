@@ -273,7 +273,7 @@ class RTCRtpSender:
                 )
                 self.__rtx_sequence_number = uint16_add(self.__rtx_sequence_number, 1)
 
-            self.__log_debug("> %s", packet)
+            # self.__log_debug("> %s", packet)
             packet_bytes = packet.serialize(self.__rtp_header_extensions_map)
             await self.transport._send_rtp(packet_bytes)
 
@@ -314,7 +314,7 @@ class RTCRtpSender:
                     packet.extensions.mid = self.__mid
 
                     # send packet
-                    self.__log_debug("> %s", packet)
+                    # self.__log_debug("> %s", packet)
                     self.__rtp_history[
                         packet.sequence_number % RTP_HISTORY_SIZE
                     ] = packet
@@ -392,7 +392,7 @@ class RTCRtpSender:
     async def _send_rtcp(self, packets: List[AnyRtcpPacket]) -> None:
         payload = b""
         for packet in packets:
-            self.__log_debug("> %s", packet)
+            # self.__log_debug("> %s", packet)
             payload += bytes(packet)
 
         try:
