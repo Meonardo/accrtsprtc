@@ -46,7 +46,7 @@ class RTSPClient:
         self.request_session = None
         self.mic = mic
 
-        self.turn = "turn:192.168.5.233:3478"
+        self.turn = None
         self.turn_user = "root"
         self.turn_passwd = "123456"
 
