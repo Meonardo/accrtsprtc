@@ -307,7 +307,7 @@ class WebRTCClient:
                 and self.turn_passwd is not None:
             ice_configs.append(RTCIceServer(self.turn, self.turn_user, self.turn_passwd))
 
-        if self.stun is not None and self.stun != 'stun':
+        if self.stun is not None:
             ice_configs.append(RTCIceServer(self.stun))
 
         if len(ice_configs) > 0:
@@ -473,7 +473,10 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print("------------------------Exception: ", e)
-        content = e.args[0]
+        if e.args:
+            content = e.args[0]
+        else:
+            content = 'Unknown exception'
         loop.run_until_complete(send_msg(conn, 'exception', content, args.id))
     finally:
         print("========= RTSP ", rtsp)

@@ -50,7 +50,7 @@ class RTSPClient:
         self.turn_user = "root"
         self.turn_passwd = "123456"
 
-        self.stun = 'stun'
+        self.stun = None
 
         self.queue = queue.Queue(3)
 
@@ -214,8 +214,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                client.room, '--id', client.publisher, '--mic', client.mic]
 
         if client.turn is not None and client.turn_user is not None and client.turn_passwd is not None:
-            cmd.extend(['--turn', client.turn, '--turn_user', client.turn_user, '--turn_passwd', client.turn_passwd,
-                        '--stun', client.stun])
+            cmd.extend(['--turn', client.turn, '--turn_user', client.turn_user, '--turn_passwd', client.turn_passwd])
+        if client.stun is not None:
+            cmd.extend(['--stun', client.stun])
 
         if self.debug_log_level > 0:
             cmd.extend(['-L', str(self.debug_log_level)])
@@ -297,7 +298,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 client.turn_user = turn_user
                 client.turn_passwd = turn_passwd
             if stun_server:
-                client.stun_server = stun_server
+                client.stun = stun_server
 
             proc = self.launch_janus(client, janus)
             client.process = proc
