@@ -53,6 +53,7 @@ class RTSPClient:
         self.stun = None
 
         self.queue = queue.Queue(3)
+        self.janus = None
 
 
 class HTTPStatusError(Exception):
@@ -191,7 +192,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             state = 1
         else:
             state = code
-        return {"state": state, "code": data}
+        if isinstance(data, dict) or isinstance(data, list):
+            resp = {"state": state, "code": "Please see 'data' field.", "data": data}
+        else:
+            resp = {"state": state, "code": data}
+        return resp
 
     @staticmethod
     def file_logger(identify):
@@ -203,14 +208,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         log = open(log_file_path, 'w', 1)
         return log
 
-    def launch_janus(self, client, janus_signaling='ws://127.0.0.1:8188'):
+    def launch_janus(self, client):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         janus_path = dir_path + "/janus.py"
         if platform.system() == "Windows":
             python = "python"
         else:
             python = "python3"
-        cmd = [python, janus_path, janus_signaling, '--rtsp', client.rtsp, '--name', client.display, '--room',
+        cmd = [python, janus_path, client.janus, '--rtsp', client.rtsp, '--name', client.display, '--room',
                client.room, '--id', client.publisher, '--mic', client.mic]
 
         if client.turn is not None and client.turn_user is not None and client.turn_passwd is not None:
@@ -293,6 +298,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.json_response(False, -3, "You've published the stream!")
         else:
             client = RTSPClient(publisher=publisher, rtsp=rtsp, mic=mic, display=display, room=room)
+            client.janus = janus
             if turn_passwd and turn_user and turn_server:
                 client.turn = turn_server
                 client.turn_user = turn_user
@@ -300,13 +306,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             if stun_server:
                 client.stun = stun_server
 
-            proc = self.launch_janus(client, janus)
+            proc = self.launch_janus(client)
             client.process = proc
             msg = publisher + " has been published to VideoRoom " + room
             self.clients[publisher] = client
 
-            # Set a timeout 20s
-            timeout = time.time() + 40
+            # Set a timeout 30s
+            timeout = time.time() + 30
             while True:
                 if time.time() > timeout:
                     return self.json_response(False, -9, 'Request subprocess timeout...')
@@ -357,12 +363,27 @@ class RequestHandler(BaseHTTPRequestHandler):
     @staticmethod
     def kill_subprocess(client: RTSPClient):
         if client.process is None:
-            return
+            return False
         try:
             os.kill(client.process.pid, signal.SIGINT)
             client.process.terminate()
+            return True
         except Exception as e:
             print("Kill subprocess exception: ", e)
+            return False
+
+    def restart_client(self, publisher):
+        client = self.clients[publisher]
+        r = self.kill_subprocess(client)
+        if r:
+            if client.log_handler is not None:
+                # 停止日志写入
+                client.log_handler.flush()
+                client.log_handler.close()
+            proc = self.launch_janus(client)
+            client.process = proc
+            msg = publisher + " has been republished to VideoRoom " + client.room
+            print(msg)
 
     # Interact with subprocess
     def subprocess_msg(self, form):
@@ -375,6 +396,13 @@ class RequestHandler(BaseHTTPRequestHandler):
                 event = form['event']
                 if event == 'exception':
                     self.kill_subprocess(client)
+                    self.clients.pop(publisher, None)
+                    print("Publisher ID: " + publisher + " Stopped!")
+                elif event == 'error':
+                    code = str(form['data'])
+                    if code == '458':
+                        # no such session, we restart it
+                        self.restart_client(publisher)
 
         return self.json_response(True, 1, "")
 

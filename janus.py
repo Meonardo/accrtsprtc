@@ -62,6 +62,12 @@ class PluginData(JanusEvent):
 
 
 @attr.s
+class JanusError:
+    code = attr.ib(validator=attr.validators.instance_of(int))
+    reason = attr.ib(validator=attr.validators.instance_of(str))
+
+
+@attr.s
 class WebrtcUp(JanusEvent):
     pass
 
@@ -238,6 +244,11 @@ class JanusGateway:
             return Ack(
                 transaction=raw["transaction"]
             )
+        elif janus == "error":
+            return JanusError(
+                code=raw["error"]["code"],
+                reason=raw["error"]["reason"]
+            )
         else:
             return raw
 
@@ -403,6 +414,9 @@ class WebRTCClient:
                     await self.handle_plugin_data(msg)
                 elif isinstance(msg, Media):
                     print(msg)
+                elif isinstance(msg, JanusError):
+                    await send_msg(self.http_session, 'error', msg.code, self.publisher)
+                    print(msg)
                 elif isinstance(msg, WebrtcUp):
                     await send_msg(self.http_session, 'webrtc', 'up', self.publisher)
                     print(msg)
@@ -422,9 +436,15 @@ def transaction_id():
 
 
 async def send_msg(session, type, data, publisher):
+    if session.closed():
+        raise Exception("Session was closed")
+
     msg = {'event': type, 'data': data, 'id': publisher}
-    async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
-        return await response.json()
+    try:
+        async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
+            return await response.json()
+    except aiohttp.ClientError as e:
+        print("Send msg to main process exception", e)
 
 
 if __name__ == "__main__":
