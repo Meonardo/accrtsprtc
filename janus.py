@@ -435,8 +435,8 @@ def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
 
-async def send_msg(session, type, data, publisher):
-    if session.closed():
+async def send_msg(session: aiohttp.ClientSession, type, data, publisher):
+    if session.closed:
         raise Exception("Session was closed")
 
     msg = {'event': type, 'data': data, 'id': publisher}
