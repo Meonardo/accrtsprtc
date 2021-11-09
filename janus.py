@@ -337,9 +337,6 @@ class WebRTCClient:
             print("Connection state is", pc.connectionState)
             await send_msg(self.http_session, 'pc', pc.connectionState, self.publisher)
 
-            if pc.connectionState == "failed":
-                await self.republish(pc)
-
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
         if self.rtsp is not None:
@@ -443,7 +440,7 @@ async def send_msg(session: aiohttp.ClientSession, type, data, publisher):
     try:
         async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
             return await response.json()
-    except aiohttp.ClientError as e:
+    except Exception as e:
         print("Send msg to main process exception", e)
 
 

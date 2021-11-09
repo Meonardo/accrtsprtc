@@ -365,12 +365,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         if client.process is None:
             return False
         try:
-            os.kill(client.process.pid, signal.SIGINT)
+            os.kill(client.process.pid, signal.SIGTERM)
             client.process.terminate()
             return True
         except Exception as e:
             print("Kill subprocess exception: ", e)
-            return False
+            client.process.terminate()
+            return True
 
     def restart_client(self, publisher):
         client = self.clients[publisher]
@@ -402,6 +403,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                     code = str(form['data'])
                     if code == '458':
                         # no such session, we restart it
+                        self.restart_client(publisher)
+                elif event == 'pc':
+                    data = form['data']
+                    if data == 'failed':
+                        # connection lost, we restart it
                         self.restart_client(publisher)
 
         return self.json_response(True, 1, "")
