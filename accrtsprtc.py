@@ -398,7 +398,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                 event = form['event']
                 if event == 'exception':
                     self.kill_subprocess(client)
-                    self.clients.pop(publisher, None)
                     print("Publisher ID: " + publisher + " Stopped!")
                 elif event == 'error':
                     code = str(form['data'])

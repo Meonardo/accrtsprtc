@@ -21,6 +21,9 @@ from aiortc.rtcrtpparameters import RTCRtpCodecCapability
 from streamplayer import StreamPlayer
 from typing import Optional
 
+import socket
+socket.setdefaulttimeout(5)
+
 
 old_print = print
 
@@ -442,8 +445,10 @@ def send_msg_to_main(type, data, publisher):
     msg = {'event': type, 'data': data, 'id': publisher}
     try:
         request = Request(url, urlencode(msg).encode())
-        r = urlopen(request).read().decode()
+        response = urlopen(request)
+        r = response.read().decode()
         print("main process response:", r)
+        response.close()
     except Exception as e:
         print("Send msg to main process exception", e)
 
