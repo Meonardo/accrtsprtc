@@ -138,8 +138,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 r = self.subprocess_msg(form)
                 self.send_json_response(r)
 
-        except HTTPStatusError as err:
-            self.send_error(err.code, err.message)
+        except Exception as err:
+            print("Response error", err)
+            self.send_error(500, "Internal error")
 
         print("[END]\n")
 
