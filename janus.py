@@ -9,8 +9,9 @@ import websockets
 import json
 import attr
 import datetime
-import aiohttp
 
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from aiortc.contrib.media import MediaPlayer
 from collections import OrderedDict
@@ -254,14 +255,13 @@ class JanusGateway:
 
 
 class WebRTCClient:
-    def __init__(self, signaling: JanusGateway, rtsp, mic, http_session, publisher):
+    def __init__(self, signaling: JanusGateway, rtsp, mic, publisher):
         self.signaling = signaling
         self.rtsp = rtsp
         self.mic = mic
         self.publisher = publisher
         self.pc: Optional[RTCPeerConnection] = None
         self.stream_player: Optional[StreamPlayer] = None
-        self.http_session = http_session
         self.turn = None
         self.turn_user = None
         self.turn_passwd = None
@@ -330,12 +330,12 @@ class WebRTCClient:
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
             print("ICE connection state is", pc.iceConnectionState)
-            await send_msg(self.http_session, 'ice', pc.iceConnectionState, self.publisher)
+            send_msg_to_main('ice', pc.iceConnectionState, self.publisher)
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             print("Connection state is", pc.connectionState)
-            await send_msg(self.http_session, 'pc', pc.connectionState, self.publisher)
+            send_msg_to_main('pc', pc.connectionState, self.publisher)
 
         request = {"request": "configure", "audio": False, "video": True}
         # configure media
@@ -412,10 +412,10 @@ class WebRTCClient:
                 elif isinstance(msg, Media):
                     print(msg)
                 elif isinstance(msg, JanusError):
-                    await send_msg(self.http_session, 'error', msg.code, self.publisher)
+                    send_msg_to_main('error', msg.code, self.publisher)
                     print(msg)
                 elif isinstance(msg, WebrtcUp):
-                    await send_msg(self.http_session, 'webrtc', 'up', self.publisher)
+                    send_msg_to_main('webrtc', 'up', self.publisher)
                     print(msg)
                 elif isinstance(msg, SlowLink):
                     print(msg)
@@ -432,14 +432,13 @@ def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
 
 
-async def send_msg(session: aiohttp.ClientSession, type, data, publisher):
-    if session.closed:
-        raise Exception("Session was closed")
-
+def send_msg_to_main(type, data, publisher):
+    url = 'http://127.0.0.1:9001/camera/subprocess'
     msg = {'event': type, 'data': data, 'id': publisher}
     try:
-        async with session.post('http://127.0.0.1:9001/camera/subprocess', data=msg) as response:
-            return await response.json()
+        request = Request(url, urlencode(msg).encode())
+        r = urlopen(request).read().decode()
+        print("main process response:", r)
     except Exception as e:
         print("Send msg to main process exception", e)
 
@@ -474,8 +473,7 @@ if __name__ == "__main__":
     # create signaling client
     signaling = JanusGateway(args.url)
     # create webrtc client
-    conn = aiohttp.ClientSession()
-    rtc_client = WebRTCClient(signaling, rtsp, args.mic, conn, args.id)
+    rtc_client = WebRTCClient(signaling, rtsp, args.mic, args.id)
     rtc_client.turn = args.turn
     rtc_client.turn_user = args.turn_user
     rtc_client.turn_passwd = args.turn_passwd
@@ -494,7 +492,7 @@ if __name__ == "__main__":
             content = e.args[0]
         else:
             content = 'Unknown exception'
-        loop.run_until_complete(send_msg(conn, 'exception', content, args.id))
+        send_msg_to_main('exception', content, args.id)
     finally:
         print("========= RTSP ", rtsp)
         print("WebSocket server stopped")
